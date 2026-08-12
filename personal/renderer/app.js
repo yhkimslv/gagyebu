@@ -357,7 +357,8 @@ async function init() {
     if (c.tip === undefined) c.tip = !!(d && d.tip);
   });
 
-  I18n.setLang(data.settings.lang || 'auto', userWords);
+  I18n.setLang(data.settings.lang || 'auto', userWords, stockNames());
+  seedNamesForLang();
   Sync.configure(data.settings);
   Sync.onStatus(renderSyncStatus);
   bindStatic();
@@ -1690,7 +1691,7 @@ function saveSettings(keepOpen) {
   setDraftCats = JSON.parse(JSON.stringify(setDraftCats));
   setDraftRecur = JSON.parse(JSON.stringify(setDraftRecur));
   if (changedFields.length) markMeta(...changedFields);
-  if (langChanged) I18n.setLang(newLang, userWords);
+  if (langChanged) I18n.setLang(newLang, userWords, stockNames());
 
   const prev = [s.supabaseUrl, s.supabaseKey, s.coupleCode].join('|');
   // 붙여넣을 때 /rest/v1 같은 경로가 같이 들어오면 잘라낸다 (안 자르면 동기화가 404 로 실패)
@@ -2381,16 +2382,46 @@ function bindPush() {
 }
 
 /* 사람이 직접 적어 넣은 말은 번역하지 않는다 (분류·결제수단·목표·반복지출 이름) */
+/* 앱이 처음 넣어준 이름들 — 문장 중간에 섞여 있어도 번역해도 안전하다 */
+function stockNames() {
+  return [
+    ...defaultCategories().expense.map((c) => c.name),
+    ...defaultCategories().income.map((c) => c.name),
+    ...defaultMethods().map((m) => m.name)
+  ];
+}
+
 function userWords() {
   const s = (data && data.settings) || {};
   const cats = s.categories || {};
+  /* 앱이 처음 넣어준 이름은 번역해도 된다 (영어 화면에 한글이 남지 않게).
+     사용자가 직접 만들거나 바꾼 이름만 그대로 둔다. */
+  const stock = new Set([
+    ...defaultCategories().expense.map((c) => c.name),
+    ...defaultCategories().income.map((c) => c.name),
+    ...defaultMethods().map((m) => m.name)
+  ]);
   return [
     ...(cats.expense || []).map((c) => c.name),
     ...(cats.income || []).map((c) => c.name),
     ...(s.methods || []).map((m) => m.name),
     ...(s.goal && s.goal.name ? [s.goal.name] : []),
     ...(s.recurring || []).map((r) => r.memo)
-  ].filter(Boolean);
+  ].filter(Boolean).filter((n) => !stock.has(n));
+}
+
+
+/* 아무것도 없는 상태에서 영어로 시작하면, 분류·결제수단 이름을 영어로 넣어준다.
+   (한글 이름을 화면에서만 영어로 바꾸면 설정에서 고칠 때 헷갈리기 때문) */
+function seedNamesForLang() {
+  if (I18n.lang !== 'en') return;
+  if (data.entries.length) return;                 // 이미 쓰던 가계부면 건드리지 않는다
+  const en = (n) => I18n.t(n);
+  const cats = data.settings.categories;
+  ['expense', 'income'].forEach((k) => {
+    (cats[k] || []).forEach((c) => { c.name = en(c.name); });
+  });
+  (data.settings.methods || []).forEach((m) => { m.name = en(m.name); });
 }
 
 /* ==================== 시작 ==================== */

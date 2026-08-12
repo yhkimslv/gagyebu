@@ -58,6 +58,37 @@ window.I18n = (function () {
     '(내용 없음)': '(no description)',
     '자동': 'auto', '예산 밖': 'off-budget',
 
+    '팁': 'Tip', '팁 없이': 'No tip,', '로 기록돼요': 'recorded',
+    '로 나눠서 정산에 반영돼요': 'split for settling up',
+    '언어': 'Language', '언어 / Language': 'Language', '데이터': 'Data',
+    '같이 / 혼자': 'Shared / Personal',
+    '을 눌러서 바꿀 수 있어요.': ' — tap to change.',
+    '분류를': 'Money entered under', '으로 입력한 돈이 목표에 쌓여요.': 'adds to your goal.',
+    '등록된 반복 지출이 없어요.': 'No recurring expenses yet.',
+    '눌러서 바꾸기': 'Tap to change',
+    '분류·결제수단·사람 이름처럼 직접 적으신 말은 그대로 둡니다.':
+      'Names you typed yourself — categories, cards, people — are left as they are.',
+    '분류·결제수단처럼 직접 적으신 말은 그대로 둡니다.':
+      'Names you typed yourself — categories and cards — are left as they are.',
+    '는 정산에 넣을지,': 'decides whether it counts for settling up;',
+    '은 팁 계산기를 띄울지 정해요. 눌러서 바꿉니다.': 'decides whether the tip calculator shows. Tap to change.',
+    '두 사람이': 'When you both enter the', '같은 세 값': 'same three values',
+    '을 넣으면 각자 입력한 내역이 하나의 가계부로 합쳐져요. 처음 한 번만 만들면 됩니다.':
+      ', your entries merge into one ledger. You only set this up once.',
+
+    '날짜를 누르면 그날 내역이 보여요': 'Tap a date to see that day',
+    '정산 반영 ·': 'Counted in settling up ·',
+    '카드로 먼저 낸 금액은': 'The amount fronted on a card is',
+    '였어요.': '.', '였어요': '',
+    '로 나눠서 계산한 금액이에요': 'split at that ratio',
+    '기기 설정 따라가기': 'Follow device',
+    '미리 보내는 경우': 'If you send it in advance, pick',
+    '을 골라주세요. 보낸 날짜와 상관없이, 고른 달의 고정비에서 빠져나갑니다.':
+      '. Whatever the send date, it comes out of that month\'s fixed costs.',
+    '이라는 지출로 들어가요. 한 번만 넣으세요.': ' is entered as one expense. Only add it once.',
+    '청구서에 이미 찍힌 금액을 넣으면': 'Enter the amount already on your statement and',
+    '기기 설정 따라가기 / Follow device': 'Follow device',
+
     /* --- 목록·달력·통계 --- */
     '내용·분류·이름 검색': 'Search notes, categories, names',
     '모든 분류': 'All categories', '둘 다': 'Both',
@@ -227,13 +258,22 @@ window.I18n = (function () {
     '외': 'and', '건 더 있어요': ' more',
     '전체 지출의': 'of all spending',
     '목표까지': 'to goal', '모은 돈': 'Saved',
-    '예산': 'Budget', '월 몫': ' share'
+    '예산': 'Budget', '월 몫': ' share',
+    '정산 반영 ·': 'Counted in settling ·',
+    '카드로 먼저 낸 금액은': 'Amount fronted on a card is',
+    '로 나눠서 계산한 금액이에요': ' split at that ratio',
+    '는 정산에 넣을지,': ' decides what counts for settling up;',
+    '은 팁 계산기를 띄울지 정해요. 눌러서 바꿉니다.': ' toggles the tip calculator. Tap to change.',
+    '로 나눠서 정산에 반영돼요': ' split for settling up',
+    '팁 없이': 'No tip —', '로 기록돼요': 'recorded'
   };
 
   /* 숫자가 섞여 통째로 못 찾는 말들 */
   const DOW_EN = { '일': 'Sun', '월': 'Mon', '화': 'Tue', '수': 'Wed', '목': 'Thu', '금': 'Fri', '토': 'Sat' };
   const MON_EN = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const RULES = [
+    [/^[일월화수목금토]$/, (m) => DOW_EN[m[0]]],
+    [/^(.+) 로 나눠서 정산에 반영돼요$/, (m) => `${m[1]} split for settling up`],
     [/^예산 (.+) 중 (.+) 남음$/, (m) => `${m[2]} left of ${m[1]}`],
     [/^⚠ 예산 (.+) 초과$/, (m) => `${m[1]} over budget`],
     [/^남은 예산 (.+)$/, (m) => `${m[1]} left`],
@@ -261,6 +301,7 @@ window.I18n = (function () {
 
   let lang = 'ko';
   let userWords = () => [];
+  let stock = [];              // 앱이 처음 넣어준 분류·결제수단 이름 (문장 중간에서도 바꾼다)
 
   function resolve(setting) {
     if (setting === 'ko' || setting === 'en') return setting;
@@ -279,6 +320,9 @@ window.I18n = (function () {
     if (!s) return null;
     if (EN[s] !== undefined) return EN[s];
     for (const [re, fn] of RULES) { const m = s.match(re); if (m) return fn(m); }
+    /* 분류 이름은 이모지와 한 덩어리로 그려진다 ("🍚 식비") */
+    const em = s.match(/^([^\p{L}\p{N}]+)\s*(.+)$/u);
+    if (em && EN[em[2]] !== undefined) return em[1] + ' ' + EN[em[2]];
     return null;
   }
 
@@ -297,6 +341,12 @@ window.I18n = (function () {
     for (const k of partialKeys) {
       if (mine.has(k)) continue;              // 사람이 쓰는 말이면 건드리지 않는다
       if (out.includes(k)) out = out.split(k).join(PARTIAL[k]);
+    }
+    /* 기본 분류·결제수단 이름은 문장 중간에 섞여 나오는 곳이 많다
+       (예: "7:30 PM · 식비"). 긴 이름부터 바꾼다. */
+    for (const k of stock) {
+      if (mine.has(k) || EN[k] === undefined) continue;
+      if (out.includes(k)) out = out.split(k).join(EN[k]);
     }
     out = out.replace(/ {2,}/g, ' ');
     return out === str ? null : out;
@@ -363,10 +413,11 @@ window.I18n = (function () {
   }
   function unwatch() { if (observer) { observer.disconnect(); observer = null; } }
 
-  function setLang(next, words) {
+  function setLang(next, words, stockNames) {
     const before = lang;
     lang = resolve(next);
     if (words) userWords = words;
+    if (stockNames) stock = [...stockNames].sort((a, b) => b.length - a.length);
     if (lang === 'en') { translateDom(document.body); watch(); }
     else if (before === 'en') { unwatch(); location.reload(); }   // 한국어로 되돌릴 땐 새로 그린다
   }
