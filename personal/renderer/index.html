@@ -119,6 +119,18 @@
     <div class="settings-body">
 
       <section class="set-section">
+        <h3>언어 / Language</h3>
+        <div class="field">
+          <select id="setLang">
+            <option value="auto">기기 설정 따라가기 / Follow device</option>
+            <option value="ko">한국어</option>
+            <option value="en">English</option>
+          </select>
+          <p class="hint tiny">분류·결제수단처럼 직접 적으신 말은 그대로 둡니다.</p>
+        </div>
+      </section>
+
+      <section class="set-section">
         <h3>예산과 통화</h3>
         <div class="field-row">
           <div class="field">
@@ -471,6 +483,7 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="config.js"></script>
+<script src="i18n.js"></script>
 <script src="storage.js"></script>
 <script src="sync.js"></script>
 <script src="link.js"></script>

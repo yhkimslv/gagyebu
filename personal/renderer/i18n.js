@@ -17,9 +17,8 @@ window.I18n = (function () {
   /* 한국어 원문 → 영어. 없는 말은 한국어 그대로 둔다. */
   const EN = {
     /* --- 머리말·탭 --- */
-    '우리 가계부': 'Our Ledger',
-    '우리 두 사람 (눌러서 설정)': 'The two of us (tap to set up)',
-    '내역': 'Entries', '달력': 'Calendar', '통계': 'Stats', '정산': 'Settle',
+    '내 가계부': 'My Ledger',
+        '내역': 'Entries', '달력': 'Calendar', '통계': 'Stats', '정산': 'Settle',
     '＋ 입력': '＋ Add', '설정': 'Settings',
     '이전 달': 'Previous month', '다음 달': 'Next month', '눌러서 이번 달로': 'Tap for this month',
     '공유 상태': 'Sync status', '닫기': 'Close',
@@ -147,7 +146,111 @@ window.I18n = (function () {
     '같이': 'Shared', '혼자': 'Personal', '개인': 'Personal', '함께': 'Shared',
     '예: 🐶 반려동물 (이모지 생략 가능)': 'e.g. 🐶 Pets (emoji optional)',
 
-    /* --- 커플 공유 --- */
+
+    /* --- 개인 앱 --- */
+    '잔액': 'Balances', '카드': 'Cards',
+    '순자산': 'Net worth', '가진 돈 − 갚을 돈': 'what you have − what you owe',
+    '가진 돈': 'What you have', '갚을 돈': 'What you owe',
+    '갚기': 'Pay', '카드값 갚기': 'Pay off a card', '카드갚기': 'Card payment',
+    '갚은 기록': 'Payments', '갚은 금액': 'Amount paid', '전액': 'Full amount',
+    '어디서 갚았어요?': 'Paid from where?',
+    '✅ 다 갚았어요': '✅ Paid off', '다 갚았어요! 🎉': 'Paid off! 🎉',
+    '시작 금액': 'Starting amount',
+    '시작 금액 — 지금 갚아야 할 잔액': 'Starting amount — what you owe today',
+    '시작 금액 — 지금 남아있는 돈': 'Starting amount — what you hold today',
+    '갚아야 할 잔액': 'balance owed', '지금 들어있는 돈': 'what you hold now',
+    '아직 시작 금액을 넣은 결제수단이 없어요.': 'No payment method has a starting amount yet.',
+    '결제수단 설정 열기': 'Open payment settings',
+    '이 갚은 기록을 지울까요?': 'Delete this payment record?',
+    '갚은 돈은': 'Money paid to a card',
+    '이번 달 지출에 잡히지 않습니다.': "doesn't count as spending this month.",
+    '이미 쓸 때 지출로 넣었거나, 시작 금액에 들어있던 돈이라 두 번 세면 안 되기 때문이에요.':
+      'It was already counted when you spent it, or it sits in the starting amount — counting it again would double it.',
+    '예: 8월 청구서': 'e.g. August statement',
+    '이번 달': 'this month', '갚았어요 👏': 'paid 👏',
+
+    /* --- 잠금 --- */
+    '잠금': 'App lock', '잠금 꺼짐': 'Lock off', '잠금 켜기': 'Turn on lock',
+    '잠금 켜짐 · 비밀번호': 'Lock on · passcode',
+    '잠금 켜짐 · 비밀번호 +': 'Lock on · passcode +',
+    '잠금을 켰어요 🔒': 'Lock on 🔒', '잠금을 껐어요': 'Lock off',
+    '잠금을 끌까요?': 'Turn off the lock?',
+    '앱을 열 때 비밀번호를 묻지 않게 됩니다.': "You won't be asked for a passcode when opening the app.",
+    '앱을 열 때 비밀번호나 지문을 물어봐요. 이 기기에만 적용됩니다.':
+      'Asks for a passcode or fingerprint when you open the app. This device only.',
+    '비밀번호 (4자 이상)': 'Passcode (4+ characters)', '한 번 더': 'Again',
+    '비밀번호를 넣어주세요': 'Enter your passcode',
+    '비밀번호가 맞지 않아요': "That passcode doesn't match",
+    '비밀번호는 4자 이상으로 해주세요': 'Use at least 4 characters',
+    '두 번 넣은 비밀번호가 달라요': "The two passcodes don't match",
+    '비밀번호로 열어주세요': 'Use your passcode',
+    '비밀번호만 켰어요 —': 'Passcode only —',
+    '열기': 'Unlock', '👆 Touch ID 로 열기': '👆 Unlock with Touch ID',
+    '👤 Face ID 로 열기': '👤 Unlock with Face ID',
+    'Touch ID 로도 열기': 'Also unlock with Touch ID',
+    'Face ID · 지문으로도 열기': 'Also unlock with Face ID',
+    '지문으로도 열기': 'Also unlock with fingerprint',
+    'Face ID·지문': 'Face ID', 'Touch ID 를 취소하셨어요': 'Touch ID was cancelled',
+    '얼굴·지문 등록이 취소됐어요': 'Face/fingerprint setup was cancelled',
+    '알 수 없는 이유': 'unknown reason',
+    '이 컴퓨터에서는 지문을 쓸 수 없어 비밀번호만 됩니다.':
+      'This computer has no fingerprint reader, so passcode only.',
+    '이 브라우저에서는 지문·얼굴을 쓸 수 없어 비밀번호만 됩니다.':
+      "This browser can't use Face ID or fingerprints, so passcode only.",
+    '⚠ 비밀번호를 잊으면 이 기기에서는 열 수 없습니다. 동기화를 켜두시면 다른 기기나 재설치로 기록을 되살릴 수 있어요.':
+      '⚠ Forget the passcode and this device is locked for good. With sync on, you can restore from another device or a reinstall.',
+
+    /* --- 커플 가계부 가져오기 --- */
+    '커플 가계부에서 가져오기': 'Import from the couple ledger',
+    '커플 가계부에서': 'From the couple ledger,', '과': ' and',
+    '을 이쪽에 자동으로 넣어줘요. 카드 잔액에도 그대로 반영됩니다.':
+      ' are added here automatically, and show up in your card balances too.',
+    '컴퓨터와 아이폰에': 'Put the',
+    '을 넣으면 내 가계부가 기기끼리 자동으로 합쳐져요. 혼자 쓰신다면 켜지 않아도 됩니다.':
+      ' on each device and your ledger merges automatically. Not needed if you only use one device.',
+    '같은 세 값': 'same three values',
+    '저장소 만드는 방법 (무료, 5분)': 'How to set up storage (free, 5 min)',
+    '다른 코드': 'a different code',
+    '⚠ 커플 가계부와': '⚠ Use', '를 쓰세요. 코드가 같으면 두 가계부가 섞입니다.':
+      ' from the couple ledger. The same code would merge the two.',
+    '내가 결제한 지출': 'what I paid for', '주고받은 정산': 'settlements sent and received',
+    '을 이쪽에 자동으로 넣어줘요. 카드 잔액에도 그대로 반영됩니다.':
+      'are added here automatically, and show up in your card balances too.',
+    '커플 가계부 Project URL': 'Couple ledger Project URL',
+    '커플 가계부 anon public 키': 'Couple ledger anon public key',
+    '커플 앱에서 쓰는 내 이름': 'My name in the couple app',
+    '커플 앱 설정의': 'Same values as in the couple app under',
+    '칸에 있는 값 그대로예요.': '.',
+    '연결 확인': 'Test connection', '확인하는 중…': 'Checking…',
+    '연동 꺼짐': 'Import off', '연동을 켰어요': 'Import on',
+    '연동을 껐어요': 'Import off', '연동을 끌까요?': 'Turn off importing?',
+    '이미 가져온 기록은 그대로 남고, 앞으로 새로 가져오지 않습니다.':
+      'What was already imported stays; nothing new will be pulled in.',
+    '네 칸을 모두 채워주세요': 'Fill in all four fields',
+    '가져오는 중…': 'Importing…', '가져올 기록이 없어요': 'Nothing to import',
+    '커플': 'couple',
+
+    /* --- 개인 앱 동기화·알림 --- */
+    '내 기기끼리 동기화': 'Sync between my devices',
+    '내 코드': 'My code', '동기화 꺼짐': 'Sync off', '동기화 상태': 'Sync status',
+    '동기화 오류': 'Sync error', '눌러서 기기 동기화 설정하기': 'Tap to set up syncing',
+    '✓ 연결됐어요! 이제 기기끼리 합쳐집니다.': '✓ Connected. Your devices are now in sync.',
+    'URL·키·내 코드를 모두 넣어주세요.': 'Fill in the URL, key and your code.',
+    '카드 결제일 같은 걸 폰으로 알려드려요.': 'Get phone alerts for things like card statement days.',
+    '카드 결제일 (결제일 하루 전)': 'Card statement day (one day before)',
+    '이번 달 예산을 다 썼을 때': "When this month's budget is used up",
+    '에서만 받을 수 있어요.': 'can receive them.',
+    '저축 목표': 'Savings goal', '데이터': 'Data',
+    '문화·여가': 'Fun & leisure',
+    '카드를 미리 등록해두면 입력할 때 한 번만 누르면 돼요.':
+      'Register your cards once and picking them is a single tap.',
+    '고른 카드로 결제한 것으로 기록돼서, 그 카드 잔액에도 자동으로 반영돼요.':
+      'Recorded as paid with that card, so it shows in the card balance too.',
+    '내용 (예: 넷플릭스)': 'Description (e.g. Netflix)',
+    '내용·분류 검색': 'Search notes and categories',
+    '(선택)': '(optional)', '예: ME-A1B2C3': 'e.g. ME-A1B2C3',
+
+    /* --- 동기화 --- */
     '커플 공유 (동기화)': 'Sharing with your partner',
     '커플 코드': 'Couple code', '새 코드 만들기': 'Generate a code',
     'anon public 키': 'anon public key',
@@ -227,7 +330,10 @@ window.I18n = (function () {
     '외': 'and', '건 더 있어요': ' more',
     '전체 지출의': 'of all spending',
     '목표까지': 'to goal', '모은 돈': 'Saved',
-    '예산': 'Budget', '월 몫': ' share'
+    '예산': 'Budget', '월 몫': ' share',
+    '가진 돈': 'Have', '갚을 돈': 'Owe', '전체': 'of',
+    '이번 달': 'Paid this month:', '갚았어요 👏': '👏',
+    '갚음': 'paid', '시작': 'start', '이후 사용': 'since'
   };
 
   /* 숫자가 섞여 통째로 못 찾는 말들 */

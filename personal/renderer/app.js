@@ -54,6 +54,7 @@ function defaultSettings() {
     supabaseUrl: '',
     supabaseKey: '',
     coupleCode: '',        // 화면에는 '내 코드' 로 표시 (동기화 테이블 컬럼 이름과 맞춰둠)
+    lang: 'auto',            // 'auto' | 'ko' | 'en'
     lastPullAt: null,
     /* 잠금 설정 — 이 기기에만 남는다 (동기화로 올리지 않는다).
        비밀번호는 저장하지 않고, 되돌릴 수 없게 섞은 값(hash)만 둔다. */
@@ -356,6 +357,7 @@ async function init() {
     if (c.tip === undefined) c.tip = !!(d && d.tip);
   });
 
+  I18n.setLang(data.settings.lang || 'auto', userWords);
   Sync.configure(data.settings);
   Sync.onStatus(renderSyncStatus);
   bindStatic();
@@ -1361,6 +1363,7 @@ function deleteEntry() {
 function openSettings() {
   const s = data.settings;
   $('#setCurrency').value = s.currency;
+  $('#setLang').value = s.lang || 'auto';
   $('#setBudget').value = s.budget || '';
   $('#setGoalName').value = (s.goal && s.goal.name) || '';
   $('#setGoalTarget').value = (s.goal && s.goal.target) || '';
@@ -1671,6 +1674,11 @@ function saveSettings(keepOpen) {
     changedFields.push('retiredMethods');
   }
 
+  /* 언어는 기기마다 다를 수 있으므로 동기화하지 않고 이 기기에만 둔다 */
+  const newLang = $('#setLang').value || 'auto';
+  const langChanged = newLang !== (s.lang || 'auto');
+  s.lang = newLang;
+
   s.currency = newCurrency;
   s.budget = newBudget;
   s.goal = newGoal;
@@ -1682,6 +1690,7 @@ function saveSettings(keepOpen) {
   setDraftCats = JSON.parse(JSON.stringify(setDraftCats));
   setDraftRecur = JSON.parse(JSON.stringify(setDraftRecur));
   if (changedFields.length) markMeta(...changedFields);
+  if (langChanged) I18n.setLang(newLang, userWords);
 
   const prev = [s.supabaseUrl, s.supabaseKey, s.coupleCode].join('|');
   // 붙여넣을 때 /rest/v1 같은 경로가 같이 들어오면 잘라낸다 (안 자르면 동기화가 404 로 실패)
@@ -1877,6 +1886,7 @@ const Lock = (function () {
 
   /* --- 지문·얼굴 --- */
   const isDesktop = () => !!(window.mygagyebu && window.mygagyebu.platform);
+  const isIOS = () => /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   async function bioKind() {
     if (isDesktop()) {
@@ -1922,15 +1932,20 @@ const Lock = (function () {
     return true;   // 실패하면 예외가 난다
   }
 
+  let lastBioErr = '';
   async function tryBio() {
     const L = cfg();
     if (!L || !L.bio) return false;
+    lastBioErr = '';
     try {
       if (L.bio === 'touchid') return await window.mygagyebu.bioPrompt('내 가계부 잠금 해제');
       if (L.bio === 'webauthn') return await webauthnVerify(L.credId);
-    } catch (e) { /* 취소하면 비밀번호로 넘어간다 */ }
+    } catch (e) {
+      lastBioErr = e && e.name === 'NotAllowedError' ? '' : (e && e.message) || '';
+    }
     return false;
   }
+  function bioError() { return lastBioErr; }
 
   /* --- 화면 --- */
   function show() {
@@ -1939,8 +1954,14 @@ const Lock = (function () {
     $('#lockPw').value = '';
     $('#lockError').textContent = '';
     const L = cfg();
-    $('#btnLockBio').classList.toggle('hidden', !(L && L.bio));
-    $('#btnLockBio').textContent = L && L.bio === 'touchid' ? '👆 Touch ID 로 열기' : '👤 Face ID · 지문으로 열기';
+    const hasBio = !!(L && L.bio);
+    const btn = $('#btnLockBio');
+    btn.classList.toggle('hidden', !hasBio);
+    btn.textContent = L && L.bio === 'touchid' ? '👆 Touch ID 로 열기' : '👤 Face ID 로 열기';
+    /* 지문·얼굴을 쓰면 그 버튼을 먼저 보여주고, 비밀번호는 아래로 내린다 */
+    btn.classList.toggle('primary', hasBio);
+    $('#btnLockOk').classList.toggle('primary', !hasBio);
+    document.querySelector('.lock-box').classList.toggle('bio-first', hasBio);
   }
   function hide() {
     unlocked = true;
@@ -1962,8 +1983,14 @@ const Lock = (function () {
   async function start() {
     if (!isOn()) { unlocked = true; return; }
     show();
-    if (await tryBio()) hide();
-    else $('#lockPw').focus();
+    const L = cfg();
+    /* 맥 Touch ID 는 앱이 열릴 때 바로 물어봐도 된다.
+       아이폰 Face ID 는 사용자가 화면을 눌러야만 뜨므로 버튼을 누르게 둔다. */
+    if (L && L.bio && !isIOS()) {
+      if (await tryBio()) { hide(); return; }
+    }
+    // 지문·얼굴을 쓰는 경우엔 키보드를 먼저 올리지 않는다 (버튼이 가려져서)
+    if (!(L && L.bio)) $('#lockPw').focus();
   }
 
   function watchAway() {
@@ -1978,7 +2005,7 @@ const Lock = (function () {
     });
   }
 
-  return { make, verify, isOn, cfg, bioKind, webauthnRegister, webauthnVerify, tryBio,
+  return { make, verify, isOn, cfg, bioKind, webauthnRegister, webauthnVerify, tryBio, bioError,
     show, hide, submit, start, watchAway, isDesktop };
 })();
 
@@ -2022,24 +2049,27 @@ async function saveLockSetting() {
   if (pw.length < 4) { $('#setLockPw').focus(); toast('비밀번호는 4자 이상으로 해주세요'); return; }
   if (pw !== pw2) { $('#setLockPw2').focus(); toast('두 번 넣은 비밀번호가 달라요'); return; }
 
-  const lock = { on: true, ...(await Lock.make(pw)), bio: null, credId: null };
-
-  /* 지문·얼굴을 쓰겠다고 했으면 지금 한 번 등록해본다.
-     여기서 실패하면 비밀번호만으로 켠다 — 켜는 것 자체가 막히면 안 되니까. */
+  /* 지문·얼굴 등록을 '먼저' 한다.
+     사파리는 사용자가 방금 버튼을 누른 직후에만 Face ID 창을 띄워준다.
+     비밀번호 해싱(25만 회)을 먼저 하면 1초 가까이 걸려 그 자격이 풀려버린다. */
+  let bio = null, credId = null, bioErr = '';
   if ($('#setLockBio').checked && lockBioKind) {
     try {
       if (lockBioKind === 'touchid') {
-        if (await window.mygagyebu.bioPrompt('내 가계부 잠금에 Touch ID 를 등록합니다')) {
-          lock.bio = 'touchid';
-        }
+        if (await window.mygagyebu.bioPrompt('내 가계부 잠금에 Touch ID 를 등록합니다')) bio = 'touchid';
+        else bioErr = 'Touch ID 를 취소하셨어요';
       } else {
-        lock.credId = await Lock.webauthnRegister();
-        lock.bio = 'webauthn';
+        credId = await Lock.webauthnRegister();
+        bio = 'webauthn';
       }
-    } catch (e) { /* 아래에서 안내한다 */ }
-    if (!lock.bio) toast('지문 등록이 안 돼서 비밀번호만 켰어요');
+    } catch (e) {
+      bioErr = e && e.name === 'NotAllowedError'
+        ? '얼굴·지문 등록이 취소됐어요' : (e && e.message) || '알 수 없는 이유';
+    }
+    if (!bio) toast('비밀번호만 켰어요 — ' + bioErr);
   }
 
+  const lock = { on: true, ...(await Lock.make(pw)), bio, credId };
   data.settings.lock = lock;
   Store.saveNow ? Store.saveNow(data) : Store.save(data);
   $('#lockSetup').classList.add('hidden');
@@ -2070,8 +2100,11 @@ function bindLock() {
   $('#btnLockOk').addEventListener('click', () => Lock.submit());
   $('#lockPw').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') Lock.submit(); });
   $('#btnLockBio').addEventListener('click', async () => {
-    if (await Lock.tryBio()) Lock.hide();
-    else $('#lockPw').focus();
+    if (await Lock.tryBio()) { Lock.hide(); return; }
+    const why = Lock.bioError();
+    $('#lockError').textContent = why
+      ? '얼굴·지문으로 열지 못했어요 — ' + why : '비밀번호로 열어주세요';
+    $('#lockPw').focus();
   });
   $('#btnLockToggle').addEventListener('click', toggleLock);
   $('#btnLockCancel').addEventListener('click', () => $('#lockSetup').classList.add('hidden'));
@@ -2345,6 +2378,19 @@ function bindPush() {
       });
     });
   });
+}
+
+/* 사람이 직접 적어 넣은 말은 번역하지 않는다 (분류·결제수단·목표·반복지출 이름) */
+function userWords() {
+  const s = (data && data.settings) || {};
+  const cats = s.categories || {};
+  return [
+    ...(cats.expense || []).map((c) => c.name),
+    ...(cats.income || []).map((c) => c.name),
+    ...(s.methods || []).map((m) => m.name),
+    ...(s.goal && s.goal.name ? [s.goal.name] : []),
+    ...(s.recurring || []).map((r) => r.memo)
+  ].filter(Boolean);
 }
 
 /* ==================== 시작 ==================== */

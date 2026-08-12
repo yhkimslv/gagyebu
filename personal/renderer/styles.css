@@ -1007,3 +1007,13 @@ body.locked .app, body.locked .titlebar-band { visibility: hidden; }
 /* 커플 가계부에서 가져온 기록 */
 .pill.couple { background: rgba(164, 74, 123, 0.14); color: #a44a7b; }
 @media (prefers-color-scheme: dark) { .pill.couple { color: #e88ab0; } }
+
+/* 지문·얼굴을 쓰는 경우: 그 버튼을 비밀번호보다 위로 */
+.lock-box.bio-first { display: flex; flex-direction: column; }
+.lock-box.bio-first .lock-emoji { order: 1; }
+.lock-box.bio-first h2 { order: 2; }
+.lock-box.bio-first .hint { order: 3; }
+.lock-box.bio-first #btnLockBio { order: 4; margin-top: 4px; }
+.lock-box.bio-first input { order: 5; margin-top: 14px; }
+.lock-box.bio-first .lock-error { order: 6; }
+.lock-box.bio-first #btnLockOk { order: 7; }
