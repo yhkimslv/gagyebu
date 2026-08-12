@@ -25,6 +25,7 @@ window.I18n = (function () {
 
     /* --- 요약 --- */
     '이번 달 지출': "This month's spending",
+    '이번 달': 'This month',
     '이번 달 생활비': "This month's living costs",
     '고정지출 빼고': 'excluding fixed costs',
     '월세·유틸리티': 'rent & utilities',
@@ -196,7 +197,7 @@ window.I18n = (function () {
     '이미 쓸 때 지출로 넣었거나, 시작 금액에 들어있던 돈이라 두 번 세면 안 되기 때문이에요.':
       'It was already counted when you spent it, or it sits in the starting amount — counting it again would double it.',
     '예: 8월 청구서': 'e.g. August statement',
-    '이번 달': 'this month', '갚았어요 👏': 'paid 👏',
+    '갚았어요 👏': 'paid 👏',
 
     /* --- 잠금 --- */
     '잠금': 'App lock', '잠금 꺼짐': 'Lock off', '잠금 켜기': 'Turn on lock',

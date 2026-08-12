@@ -317,7 +317,7 @@ a { color: var(--accent); }
 
 /* ================= 통계 ================= */
 .donut-wrap { display: flex; align-items: center; gap: 20px; }
-.donut-center-lbl { font-size: 11px; fill: var(--muted); }
+.donut-center-lbl { font-size: 10px; fill: var(--muted); }
 .donut-center-val { font-size: 15px; font-weight: 700; fill: var(--ink); }
 .rank-list { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .rank-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }

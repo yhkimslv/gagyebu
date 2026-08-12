@@ -26,6 +26,7 @@ window.I18n = (function () {
 
     /* --- 요약 --- */
     '이번 달 지출': "This month's spending",
+    '이번 달': 'This month',
     '이번 달 생활비': "This month's living costs",
     '고정지출 빼고': 'excluding fixed costs',
     '월세·유틸리티': 'rent & utilities',

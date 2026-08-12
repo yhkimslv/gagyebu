@@ -1078,7 +1078,7 @@ function donutHtml(expenses) {
   return `
     <svg viewBox="0 0 160 160" width="160" height="160" style="flex:none">
       ${segs}
-      <text x="80" y="74" text-anchor="middle" class="donut-center-lbl">이번 달 지출</text>
+      <text x="80" y="74" text-anchor="middle" class="donut-center-lbl">이번 달</text>
       <text x="80" y="94" text-anchor="middle" class="donut-center-val">${fmtMoney(total)}</text>
     </svg>
     <div class="rank-list">${rank}${tipNote}</div>`;
