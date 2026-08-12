@@ -866,3 +866,16 @@ body.desktop .topbar .couple-badge { -webkit-app-region: no-drag; }
 }
 .add-cell .brk { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .add-cell .brk b { color: var(--warn); }
+
+/* 영어는 같은 뜻이라도 글자가 길어서 칸을 넘긴다.
+   줄바꿈을 허용하고, 금액은 칸에 맞춰 조금 줄어들게 한다. */
+.sum-card .lbl {
+  overflow-wrap: anywhere; line-height: 1.35; white-space: normal;
+}
+.sum-card .val {
+  font-size: clamp(15px, 3.4vw, 21px);
+  overflow-wrap: anywhere;
+}
+.card h3, .sec-title { overflow-wrap: anywhere; line-height: 1.35; }
+.card h3 small { white-space: normal; }
+.split-note, .budget-note, .extra-note, .delta { overflow-wrap: anywhere; line-height: 1.4; }

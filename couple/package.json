@@ -1,7 +1,7 @@
 {
   "name": "family-gagyebu",
   "productName": "우리 가계부",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "두 사람이 함께 쓰는 커플 가계부 — 정산·반복지출·저축목표 (Windows / macOS)",
   "main": "main.js",
   "author": "yhkim",

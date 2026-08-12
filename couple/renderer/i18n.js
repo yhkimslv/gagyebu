@@ -60,6 +60,7 @@ window.I18n = (function () {
 
     '팁': 'Tip', '팁 없이': 'No tip,', '로 기록돼요': 'recorded',
     '로 나눠서 정산에 반영돼요': 'split for settling up',
+    '💵 이 중 팁이': '💵 Of this, tips are',
     '언어': 'Language', '언어 / Language': 'Language', '데이터': 'Data',
     '같이 / 혼자': 'Shared / Personal',
     '을 눌러서 바꿀 수 있어요.': ' — tap to change.',
@@ -170,7 +171,7 @@ window.I18n = (function () {
     '결제일 (매달 며칠, 비워도 됨)': 'Statement day (optional)',
     '혜택 메모': 'Perks note', '예: 연회비 $95, 여행보험 포함': 'e.g. $95 annual fee, travel insurance',
     '분류별 적립률 (%) — 비워두면 기본값을 씁니다': 'Reward rate by category (%) — blank uses the base rate',
-    '그 외 기본': 'Base rate', '그 외': 'otherwise',
+    '그 외 기본': 'Base rate', '그 외': 'otherwise', '고정비 빼고': 'excluding fixed costs',
     '이름을 넣어주세요': 'Enter a name',
     '분류 관리': 'Categories', '지출 분류': 'Expense categories', '수입 분류': 'Income categories',
     '아이콘': 'Icon', '이름': 'Name', '종류': 'Type', '나눔': 'Split',
@@ -255,11 +256,14 @@ window.I18n = (function () {
     '보낸 돈': 'Sent', '고정비 총': 'Fixed costs',
     '함께 쓴 돈은': 'Shared spending:', '로 나눠요': '',
     '시작': 'start', '이후 사용': 'since', '갚음': 'paid',
-    '외': 'and', '건 더 있어요': ' more',
+    '건 더 있어요': ' more',
     '전체 지출의': 'of all spending',
     '목표까지': 'to goal', '모은 돈': 'Saved',
     '예산': 'Budget', '월 몫': ' share',
-    '정산 반영 ·': 'Counted in settling ·',
+    '이 중 팁이': 'Of this, tips are',
+    '예요 (전체 지출의': '(', '나머지는': 'the rest is',
+    '로 나눠 계산했어요.': ' split.', '중 고정지출은': 'of that, fixed costs are',
+    '정액': 'flat',     '정산 반영 ·': 'Counted in settling ·',
     '카드로 먼저 낸 금액은': 'Amount fronted on a card is',
     '로 나눠서 계산한 금액이에요': ' split at that ratio',
     '는 정산에 넣을지,': ' decides what counts for settling up;',
@@ -272,6 +276,14 @@ window.I18n = (function () {
   const DOW_EN = { '일': 'Sun', '월': 'Mon', '화': 'Tue', '수': 'Wed', '목': 'Thu', '금': 'Fri', '토': 'Sat' };
   const MON_EN = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const RULES = [
+    [/^매달 (\d+)일 결제 예정$/, (m) => `Statement on the ${m[1]} each month`],
+    [/^(\d+)일 결제$/, (m) => `bills on the ${m[1]}`],
+    [/^예요 \(전체 지출의 ([\d.]+)%\)$/, (m) => `(${m[1]}% of all spending)`],
+    [/^중 고정지출은 (.+) 정액$/, (m) => `of that, fixed costs are ${m[1]}'s flat`],
+    [/^, 나머지는 (\d+) : (\d+) 로 나눠 계산했어요\.$/,
+      (m) => `; the rest is split ${m[1]} : ${m[2]}.`],
+    [/^나머지는 (\d+) : (\d+) 로 나눠 계산했어요\.$/,
+      (m) => `the rest is split ${m[1]} : ${m[2]}.`],
     [/^[일월화수목금토]$/, (m) => DOW_EN[m[0]]],
     [/^(.+) 로 나눠서 정산에 반영돼요$/, (m) => `${m[1]} split for settling up`],
     [/^예산 (.+) 중 (.+) 남음$/, (m) => `${m[2]} left of ${m[1]}`],
@@ -334,6 +346,10 @@ window.I18n = (function () {
       partialKeys = Object.keys(PARTIAL).sort((a, b) => b.length - a.length);
     }
     let out = str
+      .replace(/매달 (\d+)일 결제 예정/g, 'statement on the $1 monthly')
+      .replace(/(\d+)일 결제/g, 'bills on the $1')
+      .replace(/그 외/g, 'otherwise')
+      .replace(/팁 (?=[$₩\d])/g, 'Tip ')
       .replace(/오전 (\d+):(\d+)/g, '$1:$2 AM')
       .replace(/오후 (\d+):(\d+)/g, '$1:$2 PM')
       .replace(/(\d+)월 (\d+)일/g, (m, a, b) => `${MON_EN[+a]} ${b}`)

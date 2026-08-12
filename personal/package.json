@@ -1,7 +1,7 @@
 {
   "name": "my-gagyebu",
   "productName": "내 가계부",
-  "version": "1.9.1",
+  "version": "1.9.2",
   "description": "혼자 쓰는 개인 가계부 — 팁 계산·반복지출·저축목표 (Windows / macOS)",
   "main": "main.js",
   "author": "yhkim",

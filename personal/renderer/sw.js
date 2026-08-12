@@ -1,7 +1,7 @@
 /* 오프라인 지원용 서비스 워커.
  * 앱 화면 파일만 캐시하고, Supabase 통신은 절대 건드리지 않는다.
  * 앱 파일을 고쳤으면 아래 CACHE 버전을 올려야 새 파일이 반영된다. */
-const CACHE = 'mygagyebu-v18';
+const CACHE = 'mygagyebu-v19';
 const SHELL = [
   './',
   'index.html',
