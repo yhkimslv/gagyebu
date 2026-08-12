@@ -65,6 +65,7 @@ function defaultSettings() {
     supabaseUrl: '',
     supabaseKey: '',
     coupleCode: '',
+    lang: 'auto',            // 'auto' | 'ko' | 'en'
     lastPullAt: null,
     retiredMethods: [],      // 지운 결제수단 (동기화로 다시 살아나지 않게)
     pushSub: null,           // 이 기기의 알림 구독 (동기화로 상대 기기와 합쳐진다)
@@ -465,6 +466,7 @@ async function init() {
     data.settings.members.push(data.settings.memberName);
   }
 
+  I18n.setLang(data.settings.lang || 'auto', userWords);
   Sync.configure(data.settings);
   Sync.onStatus(renderSyncStatus);
   bindStatic();
@@ -1835,6 +1837,7 @@ function openSettings() {
   $('#setRatio').value = s.splitRatio ?? 50;
   $('#setFixedShare').value = s.fixedShare || '';
   $('#setCurrency').value = s.currency;
+  $('#setLang').value = s.lang || 'auto';
   $('#setBudget').value = s.budget || '';
   $('#setGoalName').value = (s.goal && s.goal.name) || '';
   $('#setGoalTarget').value = (s.goal && s.goal.target) || '';
@@ -2108,6 +2111,11 @@ function saveSettings(keepOpen) {
     renamePayer(s.partnerName, typedPartner);
   }
   s.partnerName = typedPartner;
+  /* 언어는 기기마다 다를 수 있으므로 동기화하지 않고 이 기기에만 둔다 */
+  const newLang = $('#setLang').value || 'auto';
+  const langChanged = newLang !== (s.lang || 'auto');
+  s.lang = newLang;
+
   s.splitRatio = newRatio;
   s.fixedShare = newFixedShare;
   s.currency = newCurrency;
@@ -2121,6 +2129,7 @@ function saveSettings(keepOpen) {
   setDraftCats = JSON.parse(JSON.stringify(setDraftCats));
   setDraftRecur = JSON.parse(JSON.stringify(setDraftRecur));
   if (changedFields.length) markMeta(...changedFields);
+  if (langChanged) I18n.setLang(newLang, userWords);
 
   const prev = [s.supabaseUrl, s.supabaseKey, s.coupleCode].join('|');
   // 붙여넣을 때 /rest/v1 같은 경로가 같이 들어오면 잘라낸다 (안 자르면 동기화가 404 로 실패)
@@ -2455,6 +2464,20 @@ function bindPush() {
       });
     });
   });
+}
+
+/* 사람이 직접 적어 넣은 말은 번역하지 않는다 (분류·결제수단·두 사람 이름) */
+function userWords() {
+  const s = (data && data.settings) || {};
+  const cats = s.categories || {};
+  return [
+    ...(cats.expense || []).map((c) => c.name),
+    ...(cats.income || []).map((c) => c.name),
+    ...(s.methods || []).map((m) => m.name),
+    ...(s.members || []), s.memberName, s.partnerName,
+    ...(s.goal && s.goal.name ? [s.goal.name] : []),
+    ...(s.recurring || []).map((r) => r.memo)
+  ].filter(Boolean);
 }
 
 /* ==================== 시작 ==================== */
