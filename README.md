@@ -1,146 +1,155 @@
-# 가계부 — 커플용 · 개인용
+# Gagyebu — a household ledger for two, and for one
 
-직접 쓰려고 만든 가계부 두 벌입니다. 맥 · 윈도우 앱과 아이폰 웹앱(홈 화면 추가)에서
-같은 기록을 나눠 봅니다.
+*[한국어 설명서](README.ko.md)*
 
-- **우리 가계부** (`couple/`) — 둘이 함께 쓰는 가계부. 정산이 중심입니다.
-- **내 가계부** (`personal/`) — 혼자 쓰는 가계부. 카드 잔액과 순자산이 중심입니다.
+Two ledger apps I built for my own use. They run as macOS / Windows desktop apps
+and as an iPhone web app (add to Home Screen), sharing the same records.
 
-서버를 따로 두지 않습니다. 기록은 기기에 저장되고, 같이 보고 싶을 때만
-본인이 만든 [Supabase](https://supabase.com) 무료 프로젝트를 거쳐 오갑니다.
-**만든 사람은 여러분의 기록을 볼 수 없습니다.**
+- **우리 가계부 / Our Ledger** (`couple/`) — for two people. Built around settling up.
+- **내 가계부 / My Ledger** (`personal/`) — for one person. Built around card balances
+  and net worth.
 
----
+There is no backend. Records live on your device, and travel between your own
+devices only through a free [Supabase](https://supabase.com) project that **you**
+create. **I cannot see your records.**
 
-## 무엇을 할 수 있나
-
-### 함께 쓰는 가계부 (couple)
-
-- **정산** — 분류에 따라 '같이 쓴 돈 / 혼자 쓴 돈'이 자동으로 갈리고,
-  지금 누가 누구에게 얼마를 보내면 되는지 한 줄로 보여줍니다.
-- **고정지출 정액 부담** — 렌트·유틸을 한 사람이 결제하고 다른 사람이 매달 정해진
-  금액을 미리 보내는 방식을 지원합니다. 미리 보낸 돈이 어느 달 몫인지 고를 수 있어
-  월말에 잔액이 0으로 떨어집니다.
-- **예산 밖 지출** — 가전·수리비처럼 갑자기 생긴 큰 돈은 그달 생활비 예산에서 빼고,
-  "이번 달 인당 얼마씩 더 넣으면 되는지"를 계산합니다.
-- **팁 계산** — 퍼센트로, 팁 금액으로, 총액으로 — 셋 중 아무 쪽으로나 넣어도 됩니다.
-- **이름 자동 맞추기** — 두 사람이 서로 다르게 적어둔 이름을 연동되는 순간 하나로 합칩니다.
-
-### 혼자 쓰는 가계부 (personal)
-
-- **카드 잔액과 순자산** — 카드마다 '지금 갚아야 할 잔액', 현금·체크카드는
-  '지금 들어있는 돈'을 시작 금액으로 넣어두면, 쓸 때마다 자동으로 오르내립니다.
-- **카드값 갚기** — 어느 통장에서 갚았는지까지 기록해서 양쪽 잔액이 같이 움직입니다.
-  갚은 돈은 그달 지출로 세지 않습니다(두 번 세지 않으려고).
-- **잠금** — 비밀번호와 지문·얼굴(맥 Touch ID, 아이폰 Face ID)로 앱을 잠급니다.
-- **커플 가계부에서 가져오기** — 커플 가계부에서 내가 결제한 지출과 주고받은 정산만
-  골라 자동으로 넣습니다.
-
-### 둘 다
-
-카드별 적립률에 따른 결제수단 추천 · 반복 지출 자동 입력 · 달력 · 통계 ·
-CSV 내보내기 · 예산 · 저축 목표 · 다크 모드 · 폰 알림.
+> The interface is in Korean only. The code and docs are in both languages.
 
 ---
 
-## 처음 준비하기
+## What it does
 
-### 1. 받아서 실행해보기
+### Our Ledger (couple)
+
+- **Settling up** — each category decides whether a purchase is shared or personal,
+  and one line tells you who owes whom, right now.
+- **Fixed costs, fixed share** — for when one person pays the rent and utilities while
+  the other sends a set amount every month. You mark which month a prepayment is for,
+  so the balance lands on zero at month's end.
+- **Out-of-budget spending** — one-off costs (an appliance, a car repair) are kept out
+  of the month's living budget, and the app works out how much extra each person owes.
+- **Tip calculator** — enter a percentage, a tip amount, or the final total. Any of the three.
+- **Name reconciliation** — if the two of you typed each other's names differently,
+  they merge into one the moment your devices connect.
+
+### My Ledger (personal)
+
+- **Card balances and net worth** — give each credit card the balance you owe today,
+  and each debit/cash account what you actually hold. Spending moves both automatically.
+- **Paying cards off** — records which account the payment came from, so both sides move.
+  Payments don't count as spending for the month (that would count the money twice).
+- **App lock** — passcode plus Touch ID on macOS and Face ID on iPhone.
+- **Import from the couple ledger** — pulls in only what actually left your own pocket:
+  what you paid for, and settlements you sent or received.
+
+### Both
+
+Card reward rates with a "use this card" hint · recurring expenses · calendar ·
+statistics · CSV export · budgets · savings goals · dark mode · phone notifications.
+
+---
+
+## Getting started
+
+### 1. Run it
 
 ```bash
-git clone <이 저장소>
-cd couple          # 또는 cd personal
+git clone <this repo>
+cd couple          # or: cd personal
 npm install
 npm start
 ```
 
-여기까지만 해도 앱은 완전히 동작합니다. 기록은 이 컴퓨터에만 저장됩니다.
-아래는 **여러 기기에서 같이 보고 싶을 때만** 필요합니다.
+That's a complete, working app. Records stay on this computer. Everything below is
+**only** needed if you want several devices to share them.
 
-### 2. 기기끼리 연동하기 (Supabase, 무료)
+### 2. Connect your devices (Supabase, free)
 
-1. [supabase.com](https://supabase.com) 에서 프로젝트를 하나 만듭니다.
-2. 왼쪽 메뉴 **SQL Editor** 에서 `supabase_setup.sql` 내용을 붙여넣고 Run.
-3. **Settings → API** 에서 `Project URL` 과 `anon public` 키를 복사합니다.
-4. 앱의 설정 화면에 그 둘과 아무 코드나(예: `US-A1B2C3`) 넣습니다.
-   같이 볼 기기에 **같은 세 값**을 넣으면 됩니다.
+1. Create a project at [supabase.com](https://supabase.com).
+2. Open **SQL Editor**, paste in `supabase_setup.sql`, and Run.
+3. Under **Settings → API**, copy the `Project URL` and the `anon public` key.
+4. Put those two, plus any code you like (say `US-A1B2C3`), into the app's settings.
+   Enter the **same three values** on every device that should share the ledger.
 
-> `anon public` 키를 쓰세요. `service_role` 키는 절대 앱에 넣지 마세요.
-> 이 표는 코드를 아는 사람이면 읽고 쓸 수 있게 돼 있습니다. 코드는 비밀번호처럼 다루세요.
+> Use the `anon public` key. Never put the `service_role` key in the app.
+> These tables are readable and writable by anyone who knows the code — treat the
+> code like a password.
 
-### 3. 웹앱으로 올리기 (선택)
+### 3. Put it on the web (optional)
 
-아이폰에서 쓰려면 어딘가에 올려야 합니다. `renderer/` 폴더를 통째로 올리면 되는
-정적 사이트라 [Netlify](https://netlify.com)·Cloudflare Pages·GitHub Pages 아무거나 됩니다.
+To use it on a phone you need it hosted somewhere. `renderer/` is a plain static
+folder, so Netlify, Cloudflare Pages, GitHub Pages — anything will do.
 
-이 저장소의 배포 스크립트를 그대로 쓰려면:
+To use the deploy script in this repo:
 
 ```bash
-cp deploy.config.example.json deploy.config.json   # 값을 채운다
+cp deploy.config.example.json deploy.config.json   # fill it in
 npm run deploy
 ```
 
-`deploy.config.json` 은 `.gitignore` 에 들어 있어 실수로 올라가지 않습니다.
+`deploy.config.json` is gitignored, so it won't be committed by accident.
 
-| 항목 | 뜻 |
+| Key | Meaning |
 |---|---|
-| `site`, `siteId` | Netlify 사이트 이름과 ID |
-| `releaseRepo` | 설치 파일(dmg·exe)을 올려둘 GitHub 저장소. 비우면 안 올립니다 |
-| `updateBase` | `version.json` 이 있는 주소. 비우면 업데이트 확인을 안 합니다 |
-| `vapidPublic` | 폰 알림용 공개키. 비우면 알림 기능이 꺼집니다 |
+| `site`, `siteId` | Netlify site name and ID |
+| `releaseRepo` | GitHub repo to upload installers to. Leave empty to skip |
+| `updateBase` | Where `version.json` lives. Leave empty to skip update checks |
+| `vapidPublic` | Public key for push notifications. Leave empty to disable them |
 
-아이폰에서는 사파리로 열어 **공유 → 홈 화면에 추가** 하면 앱처럼 씁니다.
+On iPhone, open it in Safari and use **Share → Add to Home Screen**.
 
-### 4. 설치 파일 만들기 (선택)
+### 4. Build installers (optional)
 
 ```bash
-npm run build:mac      # 맥 (arm64 · x64 dmg)
-npm run build:win      # 윈도우 (설치본 · 무설치본)
+npm run build:mac      # macOS (arm64 and x64 dmg)
+npm run build:win      # Windows (installer and portable)
 npm run build:all
 ```
 
-애플·마이크로소프트 코드 서명은 하지 않습니다(연 비용이 들어서). 그래서 처음 열 때
-"확인되지 않은 개발자" 경고가 뜹니다 — 맥은 **우클릭 → 열기** 로 넘어갑니다.
+These are not code-signed by Apple or Microsoft (it costs money yearly), so the first
+launch shows an "unidentified developer" warning. On macOS, **right-click → Open**.
 
-### 5. 폰 알림 (선택)
+### 5. Phone notifications (optional)
 
-알림을 보내려면 보내주는 쪽이 필요합니다. `notify/` 에 GitHub Actions 로 도는
-스크립트가 들어 있습니다.
+Something has to send them. `notify/` holds a script that runs on GitHub Actions.
 
 ```bash
-npx web-push generate-vapid-keys     # 공개키·비밀키 한 쌍
+npx web-push generate-vapid-keys     # a public/private pair
 ```
 
-- 공개키 → `deploy.config.json` 의 `vapidPublic`
-- 비밀키 → GitHub 저장소 **Settings → Secrets** 에 `VAPID_PRIVATE`
-- 그 외 시크릿: `SUPABASE_URL` `SUPABASE_KEY` `COUPLE_CODE` `VAPID_PUBLIC` (`VAPID_EMAIL` 은 선택)
+- public key → `vapidPublic` in `deploy.config.json`
+- private key → repo **Settings → Secrets** as `VAPID_PRIVATE`
+- other secrets: `SUPABASE_URL` `SUPABASE_KEY` `COUPLE_CODE` `VAPID_PUBLIC`
+  (`VAPID_EMAIL`, `UPDATE_URL` optional)
 
-**비밀키는 절대 앱 코드에 넣지 마세요.** 넣는 순간 아무나 여러분 사용자에게
-알림을 보낼 수 있게 됩니다.
+**Never put the private key in the app.** Anyone holding it can send notifications
+to your users.
 
-아이폰은 iOS 16.4 이상에서, **홈 화면에 추가한 앱**에서만 알림을 받습니다.
-사파리 탭으로 열어두면 오지 않습니다.
+iPhone needs iOS 16.4 or later, and only delivers to apps **added to the Home Screen** —
+not to a Safari tab.
 
 ---
 
-## 만듦새에 대해
+## How it's built
 
-- 프레임워크 없이 브라우저 API 만 씁니다. 빌드 단계가 없어서 `renderer/` 를
-  그대로 올리면 곧 웹앱이고, Electron 으로 감싸면 데스크톱 앱입니다.
-- 기록은 **기기 우선**입니다. 인터넷이 없어도 다 됩니다. 연동은 나중에 따라옵니다.
-- 충돌은 **항목마다 따로** 판단합니다. 한쪽에서 카드를 추가했다고 다른 쪽이
-  정해둔 예산이 덮어써지지 않습니다.
-- 삭제는 지우는 대신 표시만 남깁니다(tombstone). 그래야 다른 기기에서 되살아나지 않습니다.
-- 주석은 **왜 그렇게 했는지**를 적어두려 했습니다. 무엇을 하는지는 코드가 말하니까요.
+- No framework. Browser APIs only. There is no build step: serve `renderer/` and it's
+  a web app; wrap it in Electron and it's a desktop app.
+- **Device first.** Everything works offline. Syncing catches up afterwards.
+- Conflicts are resolved **per setting**, not per blob — adding a card on one device
+  won't overwrite a budget set on the other.
+- Deletions leave a tombstone rather than vanishing, so they don't come back to life
+  on another device.
+- Comments explain **why**, not what. The code already says what.
 
-## 알아두면 좋은 것
+## Things worth knowing
 
-- 잠금은 **화면 잠금**이지 암호화가 아닙니다. 기기에 로그인한 사람이 저장 파일을
-  직접 열면 내용이 보입니다.
-- Supabase 무료 프로젝트는 한동안 안 쓰면 잠듭니다. 대시보드에서 되살릴 수 있습니다.
-- 통화는 달러와 원만 있습니다. 환율 변환은 하지 않습니다.
-- 화면 글자는 한국어뿐입니다.
+- The app lock is a **screen lock, not encryption**. Anyone logged into the device can
+  read the data file directly.
+- Free Supabase projects pause after a stretch of inactivity. You can restore them
+  from the dashboard.
+- Currencies: US dollars and Korean won. No conversion between them.
+- The interface is Korean only.
 
-## 라이선스
+## License
 
-MIT. 마음대로 가져다 고쳐 쓰세요.
+MIT — see [LICENSE](LICENSE).
