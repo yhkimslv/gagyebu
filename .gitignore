@@ -1,0 +1,11 @@
+node_modules/
+dist/
+package-lock.json
+deploy.config.json
+renderer/config.js
+*/deploy.config.json
+*/renderer/config.js
+.DS_Store
+
+# Netlify CLI 가 만드는 것 (내 컴퓨터 경로가 들어있다)
+.netlify/

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+package-lock.json
+
+# 배포하는 사람마다 다른 값 (내 사이트 주소, 알림 키 등)
+deploy.config.json
+# 위 파일에서 자동으로 만들어지는 파일
+renderer/config.js
+
+# 맥이 만드는 것
+.DS_Store
+
+# Netlify CLI 가 만드는 것 (내 컴퓨터 경로가 들어있다)
+.netlify/

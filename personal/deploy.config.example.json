@@ -1,0 +1,7 @@
+{
+  "site": "내-사이트-이름",
+  "siteId": "네틀리파이-사이트-ID",
+  "releaseRepo": "깃허브아이디/저장소이름",
+  "updateBase": "https://내-사이트-이름.netlify.app",
+  "vapidPublic": "알림용 공개키 (README 참고, 안 쓰면 비워두세요)"
+}

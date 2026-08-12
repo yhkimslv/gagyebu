@@ -1,0 +1,77 @@
+{
+  "name": "my-gagyebu",
+  "productName": "내 가계부",
+  "version": "1.8.0",
+  "description": "혼자 쓰는 개인 가계부 — 팁 계산·반복지출·저축목표 (Windows / macOS)",
+  "main": "main.js",
+  "author": "yhkim",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build:mac": "node build/build.js --mac",
+    "build:win": "node build/build.js --win",
+    "build:all": "node build/build.js --mac --win",
+    "deploy": "node build/deploy.js"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.personal.mygagyebu",
+    "productName": "MyGagyebu",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "개인가계부-${version}-mac-${arch}.${ext}",
+      "category": "public.app-category.finance",
+      "icon": "build/icon.icns",
+      "identity": null,
+      "extendInfo": {
+        "CFBundleDisplayName": "내 가계부"
+      }
+    },
+    "dmg": {
+      "title": "내 가계부"
+    },
+    "afterSign": "build/after-sign.js",
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "개인가계부-${version}-windows-무설치.${ext}"
+    },
+    "nsis": {
+      "artifactName": "개인가계부-${version}-windows-설치.${ext}",
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

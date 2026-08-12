@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; img-src 'self' data:; manifest-src 'self'; worker-src 'self';">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>우리 가계부</title>
+
+<!-- 홈 화면에 추가했을 때 앱처럼 보이게 하는 설정 -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#a44a7b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="가계부">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-logo">💞</span>
+      <span class="brand-name">우리 가계부</span>
+      <button class="couple-badge" id="coupleBadge" title="우리 두 사람 (눌러서 설정)"></button>
+    </div>
+    <div class="month-nav">
+      <button class="icon-btn" id="btnPrevMonth" aria-label="이전 달">‹</button>
+      <button class="month-label" id="monthLabel" title="눌러서 이번 달로"></button>
+      <button class="icon-btn" id="btnNextMonth" aria-label="다음 달">›</button>
+    </div>
+    <div class="top-actions">
+      <button class="sync-status" id="syncStatus" title="공유 상태"></button>
+      <button class="icon-btn" id="btnSettings" aria-label="설정" title="설정">⚙</button>
+      <button class="btn primary" id="btnAdd">＋ 입력</button>
+    </div>
+  </header>
+
+  <section class="summary" id="summary"></section>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-view="list">내역</button>
+    <button class="tab" data-view="calendar">달력</button>
+    <button class="tab" data-view="stats">통계</button>
+    <button class="tab" data-view="settle">정산<span class="tab-badge hidden" id="settleBadge"></span></button>
+  </nav>
+
+  <main id="view"></main>
+</div>
+
+<!-- ============ 입력 / 수정 ============ -->
+<div class="modal-backdrop hidden" id="entryModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="seg" id="typeSeg">
+        <button data-type="expense" class="active">지출</button>
+        <button data-type="income">수입</button>
+      </div>
+      <button class="icon-btn" data-close="entryModal" aria-label="닫기">✕</button>
+    </div>
+
+    <div class="amount-label hidden" id="amountLabel">식사비 (팁 전)</div>
+    <div class="amount-row">
+      <input id="inAmount" inputmode="decimal" placeholder="0" autocomplete="off">
+      <span class="amount-unit" id="amountUnit">$</span>
+    </div>
+
+    <div class="cat-grid" id="catGrid"></div>
+
+    <!-- 팁 계산 — 팁이 켜진 분류(식비·카페·데이트 등)에서만 나온다 -->
+    <div class="tip-box hidden" id="tipBox">
+      <div class="tip-row">
+        <span class="tip-title">💵 팁</span>
+        <div class="tip-chips" id="tipChips"></div>
+      </div>
+      <div class="tip-inputs hidden" id="tipInputs">
+        <label>팁<input id="inTip" inputmode="decimal" placeholder="0.00" autocomplete="off"></label>
+        <label>합계<input id="inTotal" inputmode="decimal" placeholder="0.00" autocomplete="off"></label>
+      </div>
+      <div class="tip-sum" id="tipSum"></div>
+    </div>
+
+    <input id="inMemo" class="memo-input" placeholder="어디에 썼는지 적어주세요" maxlength="100" autocomplete="off">
+
+    <div class="field-row">
+      <div class="field">
+        <label for="inDate">날짜</label>
+        <input type="date" id="inDate">
+      </div>
+      <div class="field">
+        <label for="inTime">시간 <span class="opt">(비워도 돼요)</span></label>
+        <input type="time" id="inTime">
+      </div>
+    </div>
+
+    <div class="field" id="payerField">
+      <label>누가 냈어요?</label>
+      <div class="seg full" id="payerSeg"></div>
+    </div>
+
+    <div class="field" id="methodField">
+      <label>어떻게 결제했어요?</label>
+      <div class="cat-grid tight" id="methodGrid"></div>
+      <p class="hint tiny" id="methodHint"></p>
+    </div>
+
+    <!-- 나눔 방식은 분류에 따라 자동으로 정해지고, 이 줄에서 한 번만 눌러 바꿀 수 있다 -->
+    <div class="split-line hidden" id="splitLine">
+      <span class="split-text" id="splitText"></span>
+      <button class="split-toggle" id="btnSplitToggle"></button>
+    </div>
+
+    <!-- 갑자기 생긴 큰 지출은 이번 달 생활비 예산에서 빼둔다 -->
+    <label class="off-budget hidden" id="offBudgetLine">
+      <input type="checkbox" id="inOffBudget">
+      <span class="ob-text">
+        <b id="obTitle">이번 달 예산에서 빼기</b>
+        <small id="obDesc"></small>
+      </span>
+    </label>
+
+    <div class="modal-actions">
+      <button class="btn danger hidden" id="btnDeleteEntry">삭제</button>
+      <span class="spacer"></span>
+      <button class="btn" data-close="entryModal">취소</button>
+      <button class="btn primary" id="btnSaveEntry">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 설정 ============ -->
+<div class="modal-backdrop hidden" id="settingsModal">
+  <div class="modal wide">
+    <div class="modal-head">
+      <h2>설정</h2>
+      <button class="icon-btn" data-close="settingsModal" aria-label="닫기">✕</button>
+    </div>
+    <div class="settings-body">
+
+      <section class="set-section">
+        <h3>우리 두 사람</h3>
+        <div class="field-row">
+          <div class="field">
+            <label for="setName">내 이름</label>
+            <input id="setName" placeholder="예: 유현" maxlength="20">
+          </div>
+          <div class="field">
+            <label for="setPartner">상대 이름</label>
+            <input id="setPartner" placeholder="예: 지민" maxlength="20">
+          </div>
+        </div>
+        <p class="hint tiny" id="nameSyncHint"></p>
+        <div class="field">
+          <label for="setRatio">함께 쓴 돈, 내가 낼 비율 — <b id="ratioLabel">50%</b></label>
+          <input type="range" id="setRatio" min="0" max="100" step="5">
+          <p class="hint tiny" id="ratioHint"></p>
+        </div>
+        <div class="field">
+          <label for="setFixedShare">고정지출은 내가 정액으로 부담 (0이면 위 비율 적용)</label>
+          <input id="setFixedShare" inputmode="decimal" placeholder="0">
+          <p class="hint tiny" id="fixedShareHint"></p>
+        </div>
+      </section>
+
+      <section class="set-section">
+        <h3>예산과 통화</h3>
+        <div class="field-row">
+          <div class="field">
+            <label for="setBudget">한 달 예산 (0이면 사용 안 함)</label>
+            <input id="setBudget" inputmode="numeric" placeholder="0">
+          </div>
+          <div class="field">
+            <label for="setCurrency">통화</label>
+            <select id="setCurrency">
+              <option value="KRW">원 (₩)</option>
+              <option value="USD">달러 ($)</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <section class="set-section">
+        <h3>함께 모으기 (저축 목표)</h3>
+        <p class="hint">분류를 <b>저축</b>으로 입력한 돈이 목표에 쌓여요.</p>
+        <div class="field-row">
+          <div class="field">
+            <label for="setGoalName">목표 이름</label>
+            <input id="setGoalName" placeholder="예: 제주도 여행" maxlength="30">
+          </div>
+          <div class="field">
+            <label for="setGoalTarget">목표 금액 (0이면 사용 안 함)</label>
+            <input id="setGoalTarget" inputmode="numeric" placeholder="0">
+          </div>
+        </div>
+      </section>
+
+      <section class="set-section">
+        <h3>반복 지출</h3>
+        <p class="hint">월세·구독료처럼 매달 나가는 돈을 등록하면 자동으로 입력돼요.</p>
+        <div id="recurList"></div>
+        <div class="recur-add">
+          <input id="recDay" inputmode="numeric" placeholder="일" maxlength="2" class="w-day">
+          <input id="recMemo" placeholder="내용 (예: 월세)" maxlength="40">
+          <input id="recAmount" inputmode="numeric" placeholder="금액" class="w-amt">
+          <button class="btn" id="btnRecAdd">추가</button>
+        </div>
+      </section>
+
+      <section class="set-section">
+        <h3>결제수단 관리</h3>
+        <p class="hint">카드를 미리 등록해두면 입력할 때 한 번만 누르면 돼요. 두 사람이 함께 보는 목록입니다.</p>
+        <div id="methodManage"></div>
+        <div class="cat-add-row">
+          <input id="methodAdd" placeholder="예: 💳 Chase Sapphire" maxlength="30">
+          <button class="btn" id="btnMethodAdd">추가</button>
+        </div>
+      </section>
+
+      <section class="set-section">
+        <h3>분류 관리</h3>
+        <div id="catManage"></div>
+      </section>
+
+      <section class="set-section">
+        <h3>커플 공유 (동기화)</h3>
+        <p class="hint">
+          두 사람이 <b>같은 세 값</b>을 넣으면 각자 입력한 내역이 하나의 가계부로 합쳐져요.
+          처음 한 번만 만들면 됩니다.
+        </p>
+        <details class="guide">
+          <summary>공유 저장소 만드는 방법 (무료, 5분)</summary>
+          <ol>
+            <li><a href="https://supabase.com" target="_blank">supabase.com</a>에 둘 중 한 명이 무료 가입 후 <b>New project</b>를 만듭니다.</li>
+            <li><b>SQL Editor</b>를 열고 앱 폴더의 <b>supabase_setup.sql</b> 내용을 붙여넣고 Run 합니다.</li>
+            <li><b>Settings → API</b>에서 <b>Project URL</b>과 <b>anon public</b> 키를 복사해 아래에 넣습니다.</li>
+            <li>[새 코드 만들기]로 커플 코드를 만들고, <b>세 값을 상대에게 알려주면</b> 끝!</li>
+          </ol>
+          <p class="hint">⚠ 이 세 값을 아는 사람은 가계부를 볼 수 있어요. 둘만 알고 계세요.</p>
+        </details>
+        <div class="field">
+          <label for="setSupaUrl">Project URL</label>
+          <input id="setSupaUrl" placeholder="https://xxxx.supabase.co" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="setSupaKey">anon public 키</label>
+          <input id="setSupaKey" placeholder="eyJ..." autocomplete="off">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="setCoupleCode">커플 코드</label>
+            <input id="setCoupleCode" placeholder="예: US-A1B2C3" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>&nbsp;</label>
+            <button class="btn" id="btnGenCode">새 코드 만들기</button>
+          </div>
+        </div>
+        <div class="sync-row">
+          <button class="btn" id="btnSyncNow">지금 동기화</button>
+          <span class="hint" id="syncInfo"></span>
+        </div>
+      </section>
+
+      <section class="set-section">
+        <h3>알림</h3>
+        <p class="hint">상대가 입력하거나 정산할 금액이 생기면 폰으로 알려드려요.
+          <b>아이폰은 홈 화면에 추가한 앱</b>에서만 알림을 받을 수 있어요.</p>
+        <div class="lock-row">
+          <span id="pushStateText">알림 꺼짐</span>
+          <button class="btn" id="btnPushToggle">켜기</button>
+        </div>
+        <div id="pushOpts" class="push-opts hidden">
+          <label class="check"><input type="checkbox" id="pushOnEntry" checked>
+            <span>상대가 지출·수입을 입력했을 때</span></label>
+          <label class="check"><input type="checkbox" id="pushOnSettle" checked>
+            <span>정산할 금액이 생겼을 때</span></label>
+          <label class="check"><input type="checkbox" id="pushOnFixed" checked>
+            <span>고정비 결제일 (매달 1일)</span></label>
+          <label class="check"><input type="checkbox" id="pushOnUpdate" checked>
+            <span>앱 업데이트가 나왔을 때</span></label>
+        </div>
+        <p class="hint tiny" id="pushHint"></p>
+      </section>
+
+      <section class="set-section">
+        <h3>데이터</h3>
+        <div class="sync-row">
+          <button class="btn" id="btnCsvMonth">CSV 내보내기 (이번 달)</button>
+          <button class="btn" id="btnCsvAll">CSV 내보내기 (전체)</button>
+        </div>
+      </section>
+
+    </div>
+    <div class="modal-actions">
+      <span class="spacer"></span>
+      <button class="btn" data-close="settingsModal">취소</button>
+      <button class="btn primary" id="btnSaveSettings">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 처음 실행 ============ -->
+<div class="modal-backdrop hidden" id="welcomeModal">
+  <div class="modal narrow">
+    <div class="welcome">
+      <div class="welcome-logo">💞</div>
+      <h2>우리 가계부에 오신 걸 환영해요</h2>
+      <p>두 사람 이름을 알려주세요.<br>누가 얼마 썼는지, 정산은 얼마인지 자동으로 계산해드릴게요.</p>
+      <input id="wcMe" placeholder="내 이름" maxlength="20">
+      <input id="wcPartner" placeholder="상대 이름" maxlength="20">
+      <p class="hint tiny" style="margin:2px 0 0">
+        상대 이름은 대충 적으셔도 돼요. 나중에 연동하면 상대가 쓰는 이름으로 자동으로 맞춰집니다.
+      </p>
+      <button class="btn primary big" id="btnWelcomeStart">시작하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 돈 보낸 기록 (선입금 · 정산) ============ -->
+<div class="modal-backdrop hidden" id="sendModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>돈 보낸 기록</h2>
+      <button class="icon-btn" data-close="sendModal" aria-label="닫기">✕</button>
+    </div>
+    <p class="hint">월초에 고정비를 미리 보냈거나, 일부만 정산했을 때 기록해두는 곳이에요.</p>
+
+    <div class="amount-row">
+      <input id="inSendAmount" inputmode="decimal" placeholder="0" autocomplete="off">
+      <span class="amount-unit" id="sendUnit">$</span>
+    </div>
+
+    <div class="field">
+      <label>누가 보냈어요?</label>
+      <div class="seg full" id="sendFromSeg"></div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="inSendDate">날짜</label>
+        <input type="date" id="inSendDate">
+      </div>
+      <div class="field">
+        <label for="inSendMemo">메모</label>
+        <input id="inSendMemo" placeholder="예: 8월 고정비 선입금" maxlength="60" autocomplete="off">
+      </div>
+    </div>
+
+    <div class="field" id="sendForField">
+      <label for="inSendFor">어느 달 고정비 몫인가요?</label>
+      <div class="seg full" id="sendForSeg"></div>
+      <p class="hint tiny">미리 보내는 경우 <b>다음 달</b> 을 골라주세요.
+        보낸 날짜와 상관없이, 고른 달의 고정비에서 빠져나갑니다.</p>
+    </div>
+
+    <p class="hint tiny" id="sendHint"></p>
+
+    <div class="modal-actions">
+      <button class="btn danger hidden" id="btnSendDelete">삭제</button>
+      <span class="spacer"></span>
+      <button class="btn" data-close="sendModal">취소</button>
+      <button class="btn primary" id="btnSendSave">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 결제수단 편집 ============ -->
+<div class="modal-backdrop hidden" id="methodModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="methodModalTitle">결제수단</h2>
+      <button class="icon-btn" data-close="methodModal" aria-label="닫기">✕</button>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="inMethodName">이름</label>
+        <input id="inMethodName" placeholder="예: Chase Sapphire" maxlength="30">
+      </div>
+      <div class="field" style="flex:0 0 92px">
+        <label for="inMethodEmoji">아이콘</label>
+        <input id="inMethodEmoji" placeholder="💳" maxlength="4" style="text-align:center">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>종류</label>
+      <div class="seg full" id="methodTypeSeg">
+        <button data-mtype="credit">신용카드</button>
+        <button data-mtype="debit">체크카드</button>
+        <button data-mtype="cash">현금·기타</button>
+      </div>
+    </div>
+
+    <div class="field hidden" id="billingField">
+      <label for="inBillingDay">결제일 (매달 며칠, 비워도 됨)</label>
+      <input id="inBillingDay" inputmode="numeric" placeholder="예: 15" maxlength="2">
+    </div>
+
+    <div class="field">
+      <label for="inMethodMemo">혜택 메모</label>
+      <input id="inMethodMemo" placeholder="예: 연회비 $95, 여행보험 포함" maxlength="120">
+    </div>
+
+    <div class="field">
+      <label>분류별 적립률 (%) — 비워두면 기본값을 씁니다</label>
+      <div class="rate-grid" id="rateGrid"></div>
+      <div class="rate-base">
+        <span>그 외 기본</span>
+        <input id="inRateBase" inputmode="decimal" placeholder="1" maxlength="5">
+        <span>%</span>
+      </div>
+    </div>
+
+    <div class="field hidden" id="preSpentField">
+      <label for="inPreSpent">이미 쓴 금액 (지출 한 건으로 등록됩니다)</label>
+      <div class="pre-spent-row">
+        <input id="inPreSpent" inputmode="decimal" placeholder="0">
+        <input type="date" id="inPreSpentDate">
+      </div>
+      <p class="hint tiny">청구서에 이미 찍힌 금액을 넣으면 <b>기존 사용액</b> 이라는 지출로 들어가요. 한 번만 넣으세요.</p>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn danger hidden" id="btnMethodDelete">삭제</button>
+      <span class="spacer"></span>
+      <button class="btn" data-close="methodModal">취소</button>
+      <button class="btn primary" id="btnMethodSave">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 확인 다이얼로그 ============ -->
+<div class="modal-backdrop hidden" id="confirmModal">
+  <div class="modal narrow">
+    <div class="confirm-body">
+      <div class="confirm-emoji" id="confirmEmoji">🤝</div>
+      <h2 id="confirmTitle"></h2>
+      <p id="confirmText"></p>
+    </div>
+    <div class="modal-actions">
+      <span class="spacer"></span>
+      <button class="btn" data-close="confirmModal">취소</button>
+      <button class="btn primary" id="btnConfirmOk">확인</button>
+    </div>
+  </div>
+</div>
+
+<!-- 새 버전이 나오면 아래에서 올라오는 알림 -->
+<div class="update-bar hidden" id="updateBar">
+  <span class="update-txt" id="updateTxt"></span>
+  <button class="btn primary" id="btnUpdateNow">업데이트</button>
+  <button class="icon-btn" id="btnUpdateLater" aria-label="나중에" title="나중에">✕</button>
+</div>
+
+<div class="tooltip hidden" id="tooltip"></div>
+<div class="toast hidden" id="toast"></div>
+
+<script src="config.js"></script>
+<script src="storage.js"></script>
+<script src="sync.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
