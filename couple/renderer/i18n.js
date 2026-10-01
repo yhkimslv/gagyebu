@@ -18,6 +18,7 @@ window.I18n = (function () {
   const EN = {
     /* --- 머리말·탭 --- */
     '우리 가계부': 'Our Ledger',
+    '나': 'Me', '상대': 'Partner',
     '우리 두 사람 (눌러서 설정)': 'The two of us (tap to set up)',
     '내역': 'Entries', '달력': 'Calendar', '통계': 'Stats', '정산': 'Settle',
     '＋ 입력': '＋ Add', '설정': 'Settings',
@@ -58,11 +59,15 @@ window.I18n = (function () {
     '되돌릴 수 없어요.': "This can't be undone.",
     '(내용 없음)': '(no description)',
     '자동': 'auto', '예산 밖': 'off-budget',
+    '수정 저장': 'Save changes', '수정 취소': 'Cancel edit',
+    '✎ 개인·함께 내역을 누르면 수정할 수 있어요':
+      '✎ Tap any personal or shared entry to edit it',
+    '눌러서 수정': 'Tap to edit', '지워진 결제수단': 'Deleted payment method',
 
     '팁': 'Tip', '팁 없이': 'No tip,', '로 기록돼요': 'recorded',
     '로 나눠서 정산에 반영돼요': 'split for settling up',
     '💵 이 중 팁이': '💵 Of this, tips are',
-    '언어': 'Language', '언어 / Language': 'Language', '데이터': 'Data',
+    '언어': 'Language', '언어 / Language': 'Language', '한국어': 'Korean', '데이터': 'Data',
     '같이 / 혼자': 'Shared / Personal',
     '을 눌러서 바꿀 수 있어요.': ' — tap to change.',
     '분류를': 'Money entered under', '으로 입력한 돈이 목표에 쌓여요.': 'adds to your goal.',
@@ -90,10 +95,24 @@ window.I18n = (function () {
     '이라는 지출로 들어가요. 한 번만 넣으세요.': ' is entered as one expense. Only add it once.',
     '청구서에 이미 찍힌 금액을 넣으면': 'Enter the amount already on your statement and',
     '기기 설정 따라가기 / Follow device': 'Follow device',
+    '예: 유현': 'e.g. Alex', '예: 지민': 'e.g. Sam',
+    '예: 제주도 여행': 'e.g. Trip to Jeju',
+    '예: 💳 Chase Sapphire': 'e.g. 💳 Chase Sapphire',
+    '예: US-A1B2C3': 'e.g. US-A1B2C3',
+    '예: 8월 고정비 선입금': 'e.g. Fixed-cost advance for August',
+    '예: Chase Sapphire': 'e.g. Chase Sapphire', '예: 15': 'e.g. 15',
 
     /* --- 목록·달력·통계 --- */
     '내용·분류·이름 검색': 'Search notes, categories, names',
+    '내용·분류·이름·카드 검색': 'Search notes, categories, names, cards',
+    '내용·분류·이름·카드·초성 검색': 'Search notes, categories, names, cards or Korean initials',
+    '내역 검색': 'Search entries', '카드·결제수단별 필터': 'Filter by card or payment method',
     '모든 분류': 'All categories', '둘 다': 'Both',
+    '모든 결제수단': 'All payment methods',
+    '모든 카드·결제수단': 'All cards and payment methods',
+    '결제수단 없음': 'No payment method',
+    '내역 보기': 'View entries', '누르면 내역 보기': 'Tap to view entries',
+    '결제수단을 누르면 내역': 'tap a payment method for entries',
     '조건에 맞는 내역이 없어요': 'No entries match',
     '아직 내역이 없어요.': 'No entries yet.',
     '이 날은 쓴 돈이 없어요': 'Nothing spent this day',
@@ -105,10 +124,15 @@ window.I18n = (function () {
     '지출 없음': 'No spending',
     '오른쪽 위': 'top right', '으로 시작해보세요!': 'to get started!',
     '오전': 'AM', '오후': 'PM', '요일': '',
+    '분류를 여러 개 눌러 합계를 볼 수 있어요':
+      'Select multiple categories to see their combined total',
+    '체크하면 선택 합계, 나머지 영역을 누르면 수정':
+      'Check to include in the selected total; tap elsewhere to edit',
 
     /* --- 정산 --- */
     '지금 정산하면': 'Settle up now',
     '정산 완료로 기록': 'Mark as settled',
+    '정산 완료': 'Mark as settled',
     '정산 완료로 기록할까요?': 'Mark this as settled?',
     '정산이 기록됐어요 ✨': 'Settlement recorded ✨',
     '✨ 정산할 게 없어요, 깔끔합니다!': "✨ Nothing to settle — you're square!",
@@ -124,7 +148,7 @@ window.I18n = (function () {
     '이번 달 고정비': "This month's fixed costs",
     '✨ 이번 달 고정비 정리 완료': '✨ Fixed costs are settled for this month',
     '아직 이번 달 고정비가 입력되지 않았어요': "This month's fixed costs haven't been entered yet",
-    '내 정액 부담': 'My fixed share', '청구됨': 'charged', '중': 'of',
+    '내 정액 부담': 'My fixed share', '내 부담': 'My share', '청구됨': 'charged', '중': 'of',
     '더 보내면 이번 달 고정비가 맞아요': 'more needed to cover this month',
     '보낸 돈에서': 'Of what you sent,',
     '남았어요 (아직 안 나온 청구서가 있으면 여기서 빠져나갑니다)':
@@ -154,14 +178,25 @@ window.I18n = (function () {
     '지금은 고정지출도 위 비율로 나눠요': 'Fixed costs currently use the ratio above',
     '예산과 통화': 'Budget and currency',
     '한 달 예산 (0이면 사용 안 함)': 'Monthly budget (0 to turn off)',
-    '통화': 'Currency', '원 (₩)': 'Korean won (₩)', '달러 ($)': 'US dollar ($)',
+    '표시 통화 (이 기기만)': 'Display currency (this device only)',
+    '동기화해도 상대 설정에 바뀌지 않아요. 환율 환산은 하지 않으므로 두 사람은 같은 실제 통화를 선택해주세요.':
+      "Sync won't change this setting. There is no currency conversion, so both people should choose the same actual currency.",
+    '원 (₩)': 'Korean won (₩)', '달러 ($)': 'US dollar ($)',
     '함께 모으기 (저축 목표)': 'Saving together (goal)',
     '목표 이름': 'Goal name', '목표 금액 (0이면 사용 안 함)': 'Goal amount (0 to turn off)',
     '반복 지출': 'Recurring expenses',
     '월세·구독료처럼 매달 나가는 돈을 등록하면 자동으로 입력돼요.':
       'Add things like rent or subscriptions and they get entered automatically each month.',
+    '반복 설정을 수정하면 아직 생성되지 않은 달부터 적용돼요. 이미 생성된 내역은 내역에서 따로 수정할 수 있어요.':
+      'Changes apply to months that have not been generated yet. Edit an existing generated entry from Entries.',
     '내용 (예: 월세)': 'Description (e.g. Rent)',
     '날짜·내용·금액을 모두 넣어주세요': 'Fill in the day, description and amount',
+    '날짜·내용·금액을 모두 올바르게 넣어주세요':
+      'Enter a day from 1 to 31, a description and an amount',
+    '반복 지출 수정': 'Edit recurring expense',
+    '이 반복 지출을 삭제할까요?': 'Delete this recurring expense?',
+    '반복 설정만 삭제됩니다.': 'Only the recurring rule will be deleted.',
+    '이미 생성된 내역은 그대로 남아요.': 'Existing generated entries will remain.',
     '결제수단 관리': 'Payment methods',
     '카드를 미리 등록해두면 입력할 때 한 번만 누르면 돼요. 두 사람이 함께 보는 목록입니다.':
       'Register your cards once and picking them is a single tap. Both of you see this list.',
@@ -174,8 +209,34 @@ window.I18n = (function () {
     '분류별 적립률 (%) — 비워두면 기본값을 씁니다': 'Reward rate by category (%) — blank uses the base rate',
     '그 외 기본': 'Base rate', '그 외': 'otherwise', '고정비 빼고': 'excluding fixed costs',
     '이름을 넣어주세요': 'Enter a name',
+    '이 결제수단의 잔액 계산하기': 'Track this payment method balance',
+    '시작 금액': 'Starting amount', '잔액 계산 시작일': 'Balance start date',
+    '시작점 저장 후, 시작일 이전 내역의 변경분 반영':
+      'Apply later changes to entries before the start date',
+    '시작 금액을 넣어주세요': 'Enter a starting amount',
+    '잔액 계산 시작일을 골라주세요': 'Choose a balance start date',
+    '현재 사용액': 'Current card balance', '현재 잔액': 'Current balance',
+    '이 날 시작 시점의 미결제 사용액을 넣어주세요. 이후 지출은 더하고 수입·환불은 빼서 계산해요.':
+      'Enter the card balance at the start of this date. Later expenses add to it; income or refunds subtract from it.',
+    '이 날 시작 시점의 사용 가능 잔액을 넣어주세요. 이후 수입은 더하고 지출은 빼서 계산해요.':
+      'Enter the available balance at the start of this date. Later income adds to it; expenses subtract from it.',
+    '시작점을 저장한 뒤 시작일 이전 내역을 추가·수정·삭제하면 그 차액만 잔액에 반영돼요.':
+      'After saving this starting point, only the net change from adding, editing or deleting earlier entries will affect the balance.',
+    '시작점을 저장한 뒤 시작일 이전 내역을 추가·수정·삭제해도 잔액은 바뀌지 않아요.':
+      'After saving this starting point, adding, editing or deleting earlier entries will not change the balance.',
+    '동기화 후 과거 변경분 반영': 'earlier changes apply after sync',
     '분류 관리': 'Categories', '지출 분류': 'Expense categories', '수입 분류': 'Income categories',
+    '핸들을 끌어서 순서를 바꿀 수 있어요. 키보드에서는 방향키를 누르세요.':
+      'Drag a handle to reorder. With a keyboard, use the arrow keys.',
+    '끌어서 순서 바꾸기': 'Drag to reorder',
     '아이콘': 'Icon', '이름': 'Name', '종류': 'Type', '나눔': 'Split',
+    '분류 추가': 'Add category', '분류 수정': 'Edit category',
+    '한국어 이름': 'Korean name', '예: 반려동물': 'e.g. Pets (Korean)',
+    '한국어 이름과 영어 이름을 모두 넣어주세요': 'Enter both Korean and English names',
+    '같은 이름의 분류가 이미 있어요': 'A category with that name already exists',
+    '기본 분류는 삭제할 수 없어요': 'Default categories cannot be deleted',
+    '이름을 고쳐도 기존 내역·반복 지출·카드 혜택과의 연결은 그대로 유지돼요.':
+      'Renaming keeps existing entries, recurring expenses and card rewards linked.',
     '팁 계산 켜기/끄기': 'Turn tip calculation on/off',
     '같이': 'Shared', '혼자': 'Personal', '개인': 'Personal', '함께': 'Shared',
     '예: 🐶 반려동물 (이모지 생략 가능)': 'e.g. 🐶 Pets (emoji optional)',
@@ -186,7 +247,20 @@ window.I18n = (function () {
     'anon public 키': 'anon public key',
     '지금 동기화': 'Sync now', '동기화 중…': 'Syncing…', '동기화됨': 'Synced',
     '공유 꺼짐': 'Sharing off', '오프라인': 'Offline', '대기 중': 'Waiting',
+    '동기화 오류': 'Sync error',
     '연결을 확인해주세요': 'Check your connection',
+    'Project URL 을 확인해주세요. 뒤에 /rest/v1 같은 주소가 붙어 있으면 지우고 https://xxxx.supabase.co 형태만 넣으면 됩니다.':
+      'Check the Project URL. Remove paths such as /rest/v1 and use only https://xxxx.supabase.co.',
+    'Supabase 에 표가 아직 없어요. SQL Editor 에서 supabase_setup.sql 을 실행했는지 확인해주세요.':
+      'The Supabase tables are missing. Run supabase_setup.sql in the SQL Editor.',
+    'anon public 키가 맞는지 확인해주세요. (service_role 키가 아니라 anon public 키입니다)':
+      'Check the anon public key. Use the anon public key, not the service_role key.',
+    'Supabase 표에 칸이 부족해요. supabase_setup.sql 을 다시 한 번 실행해주세요.':
+      'The Supabase schema is out of date. Run supabase_setup.sql again.',
+    '인터넷에 연결되면 자동으로 동기화됩니다.':
+      'Sync will resume automatically when you reconnect to the internet.',
+    '서버에 연결할 수 없어요. Project URL 이 맞는지 확인해주세요.':
+      'Could not connect to the server. Check the Project URL.',
     '눌러서 지금 동기화': 'Tap to sync now',
     '눌러서 커플 공유 설정하기': 'Tap to set up sharing',
     'URL·키·커플 코드를 모두 넣어주세요.': 'Fill in the URL, key and couple code.',
@@ -195,6 +269,25 @@ window.I18n = (function () {
     '⚠ 이 세 값을 아는 사람은 가계부를 볼 수 있어요. 둘만 알고 계세요.':
       '⚠ Anyone with these three values can read your ledger. Keep them between you.',
     '공유 저장소 만드는 방법 (무료, 5분)': 'How to set up shared storage (free, 5 min)',
+    '에 둘 중 한 명이 무료 가입 후 New project를 만듭니다.':
+      ' — one of you signs up for free and creates a New project.',
+    'SQL Editor를 열고 앱 폴더의 supabase_setup.sql 내용을 붙여넣고 Run 합니다.':
+      'Open SQL Editor, paste the contents of supabase_setup.sql from the app folder, and select Run.',
+    'Settings → API에서 Project URL과 anon public 키를 복사해 아래에 넣습니다.':
+      'From Settings → API, copy the Project URL and anon public key into the fields below.',
+    '[새 코드 만들기]로 커플 코드를 만들고, 세 값을 상대에게 알려주면 끝!':
+      'Generate a couple code, then give all three values to your partner.',
+    '에 둘 중 한 명이 무료 가입 후': ' — one of you signs up for free and creates a',
+    '를 만듭니다.': '.',
+    '를 열고 앱 폴더의': '— paste the contents of',
+    '내용을 붙여넣고 Run 합니다.': 'and select Run.',
+    '에서': '— copy', '과': 'and the',
+    '키를 복사해 아래에 넣습니다.': 'key into the fields below.',
+    '[새 코드 만들기]로 커플 코드를 만들고,': 'Generate a couple code, then',
+    '세 값을 상대에게 알려주면': 'give all three values to your partner',
+    '끝!': "and you're done!",
+    '설정에서 한 달 예산을 넣으면 “인당 총 얼마”까지 계산해드려요.':
+      'Set a monthly budget in Settings to calculate each person\'s full contribution.',
 
     /* --- 알림 --- */
     '알림': 'Notifications', '알림 켜짐': 'Notifications on', '알림 꺼짐': 'Notifications off',
@@ -216,12 +309,16 @@ window.I18n = (function () {
       'Notifications are blocked. Allow them from the padlock in the address bar.',
     '데스크톱 앱에서는 폰 알림을 쓰지 않아요. 아이폰 홈 화면 앱에서 켜주세요.':
       'Phone alerts are for the iPhone Home Screen app, not the desktop app.',
+    '사파리에서 공유 → 홈 화면에 추가 한 뒤, 그 앱에서 켜주세요.':
+      'In Safari, choose Share → Add to Home Screen, then turn notifications on in that app.',
+    '알림이 차단돼 있어요. 아이폰 설정 → 알림 에서 이 앱을 켜주세요.':
+      'Notifications are blocked. Turn them on for this app in iPhone Settings → Notifications.',
 
     /* --- 데이터·업데이트 --- */
     'CSV 내보내기 (이번 달)': 'Export CSV (this month)',
     'CSV 내보내기 (전체)': 'Export CSV (all)',
     'CSV 파일을 저장했어요': 'CSV file saved',
-    '구분': 'Type', '내용': 'Note', '낸사람': 'Paid by',
+    '구분': 'Type', '분류': 'Category', '내용': 'Note', '낸사람': 'Paid by',
     '새 버전이 준비됐어요': 'A new version is ready',
     '누르면 바로 최신 화면으로 바뀝니다': 'Tap to switch to the latest version',
     '업데이트': 'Update', '나중에': 'Later', '적용 중…': 'Applying…',
@@ -253,10 +350,23 @@ window.I18n = (function () {
     '님이 지출을 입력했어요': ' added an expense',
     '님에게 보내면 정산 끝!': " — then you're square!",
     '님이': ' →', '님에게': ' to',
-    '내 정액 부담': 'My fixed share', '청구됨': 'charged',
+    '내 정액 부담': 'My fixed share', '내 부담': 'My share', '청구됨': 'charged',
     '보낸 돈': 'Sent', '고정비 총': 'Fixed costs',
     '함께 쓴 돈은': 'Shared spending:', '로 나눠요': '',
     '시작': 'start', '이후 사용': 'since', '갚음': 'paid',
+    '이번 달 지출': 'spent this month',
+    '동기화 후 과거 변경분 반영': 'earlier changes apply after sync',
+    '과거 변경분 반영': 'earlier changes applied',
+    '과거 변경분 미반영': 'earlier changes ignored', '시작 기준': 'start basis',
+    '현재 사용액': 'Current card balance', '현재 잔액': 'Current balance',
+    '이 날 시작 시점의 미결제 사용액을 넣어주세요. 이후 지출은 더하고 수입·환불은 빼서 계산해요.':
+      'Enter the card balance at the start of this date. Later expenses add to it; income or refunds subtract from it.',
+    '이 날 시작 시점의 사용 가능 잔액을 넣어주세요. 이후 수입은 더하고 지출은 빼서 계산해요.':
+      'Enter the available balance at the start of this date. Later income adds to it; expenses subtract from it.',
+    '시작점을 저장한 뒤 시작일 이전 내역을 추가·수정·삭제하면 그 차액만 잔액에 반영돼요.':
+      'After saving this starting point, only the net change from adding, editing or deleting earlier entries will affect the balance.',
+    '시작점을 저장한 뒤 시작일 이전 내역을 추가·수정·삭제해도 잔액은 바뀌지 않아요.':
+      'After saving this starting point, adding, editing or deleting earlier entries will not change the balance.',
     '건 더 있어요': ' more',
     '전체 지출의': 'of all spending',
     '목표까지': 'to goal', '모은 돈': 'Saved',
@@ -279,6 +389,10 @@ window.I18n = (function () {
   const RULES = [
     [/^매달 (\d+)일 결제 예정$/, (m) => `Statement on the ${m[1]} each month`],
     [/^(\d+)일 결제$/, (m) => `bills on the ${m[1]}`],
+    [/^(.+) 정액 부담액 \(바꾸면 내 정액 부담으로 변경\)$/,
+      (m) => `${m[1]}'s fixed share (change to make it mine)`],
+    [/^고정지출은 (.+) 가 매달 (.+) 만 부담하고, 남는 금액은 (.+) 부담이 돼요$/,
+      (m) => `For fixed costs, ${m[1]} pays a fixed ${m[2]} each month and ${m[3]} covers the rest.`],
     [/^예요 \(전체 지출의 ([\d.]+)%\)$/, (m) => `(${m[1]}% of all spending)`],
     [/^중 고정지출은 (.+) 정액$/, (m) => `of that, fixed costs are ${m[1]}'s flat`],
     [/^, 나머지는 (\d+) : (\d+) 로 나눠 계산했어요\.$/,
@@ -307,6 +421,7 @@ window.I18n = (function () {
     [/^오후 (\d+):(\d+)$/, (m) => `${m[1]}:${m[2]} PM`],
     [/^(\d+)월 몫$/, (m) => `for ${MON_EN[+m[1]]}`],
     [/^(\d+)건$/, (m) => `${m[1]} ${+m[1] === 1 ? 'entry' : 'entries'}`],
+    [/^지워진 결제수단 (\d+)$/, (m) => `Deleted payment method ${m[1]}`],
     [/^외 (\d+)건 더 있어요$/, (m) => `and ${m[1]} more`],
     [/^매달 (\d+)일$/, (m) => `Monthly on the ${m[1]}`],
     [/^(\d+)일 결제$/, (m) => `bills on the ${m[1]}`]
@@ -349,6 +464,7 @@ window.I18n = (function () {
     let out = str
       .replace(/매달 (\d+)일 결제 예정/g, 'statement on the $1 monthly')
       .replace(/(\d+)일 결제/g, 'bills on the $1')
+      .replace(/(\d{4}-\d{2}-\d{2}) 기준/g, '$1 basis')
       .replace(/그 외/g, 'otherwise')
       .replace(/팁 (?=[$₩\d])/g, 'Tip ')
       .replace(/오전 (\d+):(\d+)/g, '$1:$2 AM')
@@ -378,6 +494,7 @@ window.I18n = (function () {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode(n) {
         if (SKIP_TAGS[n.parentNode && n.parentNode.nodeName]) return NodeFilter.FILTER_REJECT;
+        if (n.parentElement && n.parentElement.closest('[data-i18n-user]')) return NodeFilter.FILTER_REJECT;
         return /[가-힣]/.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
       }
     });
@@ -418,6 +535,7 @@ window.I18n = (function () {
         for (const node of m.addedNodes) {
           if (node.nodeType === 1) translateDom(node);
           else if (node.nodeType === 3 && /[가-힣]/.test(node.nodeValue)) {
+            if (node.parentElement && node.parentElement.closest('[data-i18n-user]')) continue;
             const s = node.nodeValue.trim();
             if (new Set(userWords()).has(s)) continue;
             const to = look(s);
@@ -433,6 +551,16 @@ window.I18n = (function () {
   function setLang(next, words, stockNames) {
     const before = lang;
     lang = resolve(next);
+    document.documentElement.lang = lang;
+    document.title = lang === 'en' ? 'Our Ledger' : '우리 가계부';
+    /* Install metadata is outside the rendered body, so the DOM translator
+       cannot reach it. Point browsers at the matching manifest before an
+       install prompt is shown, and keep the iOS Home Screen title in step. */
+    const manifest = document.querySelector('link[rel="manifest"]');
+    if (manifest) manifest.setAttribute('href', lang === 'en'
+      ? 'manifest-en.webmanifest' : 'manifest.webmanifest');
+    const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+    if (appleTitle) appleTitle.setAttribute('content', lang === 'en' ? 'Our Ledger' : '가계부');
     if (words) userWords = words;
     if (stockNames) stock = [...stockNames].sort((a, b) => b.length - a.length);
     if (lang === 'en') { translateDom(document.body); watch(); }

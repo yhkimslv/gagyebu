@@ -1,8 +1,8 @@
 {
   "name": "my-gagyebu",
   "productName": "내 가계부",
-  "version": "1.9.3",
-  "description": "혼자 쓰는 개인 가계부 — 팁 계산·반복지출·저축목표 (Windows / macOS)",
+  "version": "1.10.6",
+  "description": "Offline-first personal finance tracker with card balances, recurring expenses, savings goals, and optional device sync",
   "main": "main.js",
   "author": "yhkim",
   "license": "MIT",

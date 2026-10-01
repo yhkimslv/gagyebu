@@ -1,8 +1,8 @@
 {
   "name": "family-gagyebu",
   "productName": "우리 가계부",
-  "version": "1.7.4",
-  "description": "두 사람이 함께 쓰는 커플 가계부 — 정산·반복지출·저축목표 (Windows / macOS)",
+  "version": "1.8.7",
+  "description": "A shared expense tracker for couples with settlements, recurring expenses, and saving goals (Windows and macOS)",
   "main": "main.js",
   "author": "yhkim",
   "license": "MIT",

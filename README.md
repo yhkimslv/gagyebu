@@ -1,155 +1,146 @@
-# Gagyebu — a household ledger for two, and for one
+# Gagyebu: Couple and Personal Finance Trackers
 
-*[한국어 설명서](README.ko.md)*
+Gagyebu is a pair of local-first finance apps for macOS, Windows, and iPhone:
 
-Two ledger apps I built for my own use. They run as macOS / Windows desktop apps
-and as an iPhone web app (add to Home Screen), sharing the same records.
+- **Our Ledger** (`couple/`) helps two people track shared and personal spending, split costs, and settle up.
+- **My Ledger** (`personal/`) tracks one person's spending, income, budgets, payment methods, card balances, and net worth.
 
-- **우리 가계부 / Our Ledger** (`couple/`) — for two people. Built around settling up.
-- **내 가계부 / My Ledger** (`personal/`) — for one person. Built around card balances
-  and net worth.
+Both apps work offline, support English and Korean, and can optionally sync through a Supabase project that you control. There is no developer-operated data backend, and the developer cannot see your financial records.
 
-There is no backend. Records live on your device, and travel between your own
-devices only through a free [Supabase](https://supabase.com) project that **you**
-create. **I cannot see your records.**
+## Try or download
 
-> The interface is in Korean only. The code and docs are in both languages.
+- Our Ledger web app: [piggyduo.netlify.app](https://piggyduo.netlify.app)
+- My Ledger web app: [piggybox.netlify.app](https://piggybox.netlify.app)
+- macOS and Windows installers: [Gagyebu Releases](https://github.com/yhkimslv/gagyebu-releases/releases)
 
----
+For iPhone, open either web app in Safari, tap **Share**, and choose **Add to Home Screen**.
 
-## What it does
+## Highlights
 
-### Our Ledger (couple)
+### Our Ledger
 
-- **Settling up** — each category decides whether a purchase is shared or personal,
-  and one line tells you who owes whom, right now.
-- **Fixed costs, fixed share** — for when one person pays the rent and utilities while
-  the other sends a set amount every month. You mark which month a prepayment is for,
-  so the balance lands on zero at month's end.
-- **Out-of-budget spending** — one-off costs (an appliance, a car repair) are kept out
-  of the month's living budget, and the app works out how much extra each person owes.
-- **Tip calculator** — enter a percentage, a tip amount, or the final total. Any of the three.
-- **Name reconciliation** — if the two of you typed each other's names differently,
-  they merge into one the moment your devices connect.
+- Shared and personal expenses in one ledger
+- Live settlement balance showing who owes whom
+- Configurable split ratios, including 0/100 and asymmetric splits
+- Fixed monthly shares for rent, utilities, and other recurring household costs
+- Per-person spending totals and selectable transaction sums
+- Recurring expenses, savings goals, budgets, tips, calendar views, and statistics
+- Search and transaction history by payment method
+- Editable, bilingual categories with drag-and-drop ordering
 
-### My Ledger (personal)
+### My Ledger
 
-- **Card balances and net worth** — give each credit card the balance you owe today,
-  and each debit/cash account what you actually hold. Spending moves both automatically.
-- **Paying cards off** — records which account the payment came from, so both sides move.
-  Payments don't count as spending for the month (that would count the money twice).
-- **App lock** — passcode plus Touch ID on macOS and Face ID on iPhone.
-- **Import from the couple ledger** — pulls in only what actually left your own pocket:
-  what you paid for, and settlements you sent or received.
+- Expenses, income, budgets, calendar views, and detailed statistics
+- Credit-card, debit-account, cash, and other payment-method balances
+- Balance baselines with an as-of date and optional backdated adjustment tracking
+- Credit-card payment records without double-counting monthly spending
+- Search and transaction history by payment method
+- Recurring expenses, savings goals, tips, and CSV export
+- Optional passcode and biometric screen lock where supported
+- Import from Our Ledger with personal-share accounting
 
-### Both
+When a shared expense is imported from Our Ledger, My Ledger uses only your share for monthly spending, budgets, and statistics. If you paid, the full charge remains in your card balance and card history. If your partner paid, your share appears in spending reports without affecting your cards. Settlement records are excluded from spending totals to prevent double-counting.
 
-Card reward rates with a "use this card" hint · recurring expenses · calendar ·
-statistics · CSV export · budgets · savings goals · dark mode · phone notifications.
+### Both apps
 
----
+- English and Korean interfaces
+- USD and KRW display options, stored per device
+- Offline-first storage
+- Optional cross-device sync through your own Supabase project
+- Editable transactions and recurring rules
+- Keyboard-friendly forms and search
+- Light and dark modes
+- Installable Progressive Web App for iPhone
+- Electron desktop apps for Apple silicon, Intel Mac, and Windows x64
 
-## Getting started
+## Run locally
 
-### 1. Run it
+Requirements:
+
+- Node.js 20 or later
+- npm
 
 ```bash
-git clone <this repo>
-cd couple          # or: cd personal
+git clone https://github.com/yhkimslv/gagyebu.git
+cd gagyebu/couple       # or: cd gagyebu/personal
 npm install
 npm start
 ```
 
-That's a complete, working app. Records stay on this computer. Everything below is
-**only** needed if you want several devices to share them.
+The app is fully usable without sync. Data remains on that device unless you configure Supabase.
 
-### 2. Connect your devices (Supabase, free)
+## Optional device sync
+
+Each app includes a `supabase_setup.sql` file.
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor**, paste in `supabase_setup.sql`, and Run.
-3. Under **Settings → API**, copy the `Project URL` and the `anon public` key.
-4. Put those two, plus any code you like (say `US-A1B2C3`), into the app's settings.
-   Enter the **same three values** on every device that should share the ledger.
+2. Open **SQL Editor**, paste the relevant `supabase_setup.sql`, and run it.
+3. Under **Settings > API**, copy the project URL and `anon public` key.
+4. Enter those values and a private sync code in the app's settings.
+5. Enter the same three values on every device that should share that ledger.
 
-> Use the `anon public` key. Never put the `service_role` key in the app.
-> These tables are readable and writable by anyone who knows the code — treat the
-> code like a password.
+Use different sync codes for Our Ledger and My Ledger, even if they share one Supabase project. Never place a `service_role` key in the app. Anyone who knows the project details and sync code can access that ledger, so treat the code like a password.
 
-### 3. Put it on the web (optional)
+## Host the iPhone web app
 
-To use it on a phone you need it hosted somewhere. `renderer/` is a plain static
-folder, so Netlify, Cloudflare Pages, GitHub Pages — anything will do.
+Each app's `renderer/` directory is a complete static web app. It can be hosted on Netlify, Cloudflare Pages, GitHub Pages, or any static host.
 
-To use the deploy script in this repo:
+To use the included Netlify deployment script:
 
 ```bash
-cp deploy.config.example.json deploy.config.json   # fill it in
+cd couple                    # or: cd personal
+cp deploy.config.example.json deploy.config.json
+# Fill in deploy.config.json.
 npm run deploy
 ```
 
-`deploy.config.json` is gitignored, so it won't be committed by accident.
+`deploy.config.json` and generated `renderer/config.js` files are ignored by Git. Do not commit credentials or private deployment configuration.
 
-| Key | Meaning |
-|---|---|
-| `site`, `siteId` | Netlify site name and ID |
-| `releaseRepo` | GitHub repo to upload installers to. Leave empty to skip |
-| `updateBase` | Where `version.json` lives. Leave empty to skip update checks |
-| `vapidPublic` | Public key for push notifications. Leave empty to disable them |
+## Build desktop installers
 
-On iPhone, open it in Safari and use **Share → Add to Home Screen**.
-
-### 4. Build installers (optional)
+From either app directory:
 
 ```bash
-npm run build:mac      # macOS (arm64 and x64 dmg)
-npm run build:win      # Windows (installer and portable)
+npm run build:mac
+npm run build:win
 npm run build:all
 ```
 
-These are not code-signed by Apple or Microsoft (it costs money yearly), so the first
-launch shows an "unidentified developer" warning. On macOS, **right-click → Open**.
+The build creates DMGs for Apple silicon and Intel Macs plus installer and portable executables for Windows x64.
 
-### 5. Phone notifications (optional)
+The public builds are ad-hoc signed on macOS and are not notarized by Apple or signed by Microsoft. The first launch may show an unidentified-developer warning. On macOS, use **right-click > Open**. On Windows, review the warning and choose **More info > Run anyway** only if you downloaded the file from the official Releases page.
 
-Something has to send them. `notify/` holds a script that runs on GitHub Actions.
+## Repository layout
 
-```bash
-npx web-push generate-vapid-keys     # a public/private pair
+```text
+gagyebu/
+├── couple/                 # Our Ledger
+│   ├── renderer/           # Static PWA and shared UI logic
+│   ├── build/              # Electron build and deployment scripts
+│   └── supabase_setup.sql
+├── personal/               # My Ledger
+│   ├── renderer/
+│   ├── build/
+│   └── supabase_setup.sql
+├── notify/                 # Optional scheduled web-push sender
+└── .github/workflows/      # Notification workflow
 ```
 
-- public key → `vapidPublic` in `deploy.config.json`
-- private key → repo **Settings → Secrets** as `VAPID_PRIVATE`
-- other secrets: `SUPABASE_URL` `SUPABASE_KEY` `COUPLE_CODE` `VAPID_PUBLIC`
-  (`VAPID_EMAIL`, `UPDATE_URL` optional)
+The renderer uses browser APIs without a front-end framework. Electron packages the same renderer for desktop. Data writes are local first; synchronization catches up when a connection is available. Deletions use tombstones so removed records do not reappear on another device.
 
-**Never put the private key in the app.** Anyone holding it can send notifications
-to your users.
+## Privacy and security
 
-iPhone needs iOS 16.4 or later, and only delivers to apps **added to the Home Screen** —
-not to a Safari tab.
+- Financial records are stored locally and, if enabled, in your own Supabase project.
+- The app lock is a screen lock, not full database encryption.
+- Supabase free projects may pause after inactivity and can be restored from the Supabase dashboard.
+- The apps display USD or KRW but do not perform currency conversion.
+- Do not commit `deploy.config.json`, generated configuration, private keys, or real sync codes.
 
----
+## Detailed guides
 
-## How it's built
-
-- No framework. Browser APIs only. There is no build step: serve `renderer/` and it's
-  a web app; wrap it in Electron and it's a desktop app.
-- **Device first.** Everything works offline. Syncing catches up afterwards.
-- Conflicts are resolved **per setting**, not per blob — adding a card on one device
-  won't overwrite a budget set on the other.
-- Deletions leave a tombstone rather than vanishing, so they don't come back to life
-  on another device.
-- Comments explain **why**, not what. The code already says what.
-
-## Things worth knowing
-
-- The app lock is a **screen lock, not encryption**. Anyone logged into the device can
-  read the data file directly.
-- Free Supabase projects pause after a stretch of inactivity. You can restore them
-  from the dashboard.
-- Currencies: US dollars and Korean won. No conversion between them.
-- The interface is Korean only.
+- [Our Ledger documentation](couple/README.md)
+- [My Ledger documentation](personal/README.md)
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

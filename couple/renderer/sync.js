@@ -4,6 +4,7 @@
  * - 삭제는 deleted 플래그(tombstone)로 전파
  */
 window.Sync = (function () {
+  const localized = (ko, en) => (window.I18n && window.I18n.lang === 'en') ? en : ko;
   let cfg = null;
   let extraOk = true;   // Supabase 에 extra 칸이 있는지 (없으면 빼고 보낸다)
   const status = { state: 'off', lastSyncAt: null, error: null, running: false };
@@ -39,16 +40,24 @@ window.Sync = (function () {
   function friendlyError(status, body) {
     const b = body || '';
     if (status === 404 && b.includes('PGRST125')) {
-      return 'Project URL 을 확인해주세요. 뒤에 /rest/v1 같은 주소가 붙어 있으면 지우고 https://xxxx.supabase.co 형태만 넣으면 됩니다.';
+      return localized(
+        'Project URL 을 확인해주세요. 뒤에 /rest/v1 같은 주소가 붙어 있으면 지우고 https://xxxx.supabase.co 형태만 넣으면 됩니다.',
+        'Check the Project URL. Remove paths such as /rest/v1 and use only https://xxxx.supabase.co.');
     }
     if (status === 404 && (b.includes('PGRST205') || b.includes('Could not find the table'))) {
-      return 'Supabase 에 표가 아직 없어요. SQL Editor 에서 supabase_setup.sql 을 실행했는지 확인해주세요.';
+      return localized(
+        'Supabase 에 표가 아직 없어요. SQL Editor 에서 supabase_setup.sql 을 실행했는지 확인해주세요.',
+        'The Supabase tables are missing. Run supabase_setup.sql in the SQL Editor.');
     }
     if (status === 401 || status === 403) {
-      return 'anon public 키가 맞는지 확인해주세요. (service_role 키가 아니라 anon public 키입니다)';
+      return localized(
+        'anon public 키가 맞는지 확인해주세요. (service_role 키가 아니라 anon public 키입니다)',
+        'Check the anon public key. Use the anon public key, not the service_role key.');
     }
     if (status === 400 && b.includes('column')) {
-      return 'Supabase 표에 칸이 부족해요. supabase_setup.sql 을 다시 한 번 실행해주세요.';
+      return localized(
+        'Supabase 표에 칸이 부족해요. supabase_setup.sql 을 다시 한 번 실행해주세요.',
+        'The Supabase schema is out of date. Run supabase_setup.sql again.');
     }
     return 'HTTP ' + status + ' ' + b.slice(0, 200);
   }
@@ -68,8 +77,10 @@ window.Sync = (function () {
     } catch (e) {
       // 인터넷이 끊겼거나 Project URL 이 잘못된 주소일 때
       throw new Error(navigator.onLine === false
-        ? '인터넷에 연결되면 자동으로 동기화됩니다.'
-        : '서버에 연결할 수 없어요. Project URL 이 맞는지 확인해주세요.');
+        ? localized('인터넷에 연결되면 자동으로 동기화됩니다.',
+          'Sync will resume automatically when you reconnect to the internet.')
+        : localized('서버에 연결할 수 없어요. Project URL 이 맞는지 확인해주세요.',
+          'Could not connect to the server. Check the Project URL.'));
     }
     if (!res.ok) {
       const t = await res.text().catch(() => '');
@@ -161,23 +172,44 @@ window.Sync = (function () {
 
       /* 2) 상대 변경분 받아오기 */
       const since = data.settings.lastPullAt || '1970-01-01T00:00:00Z';
-      const rows = await req(
-        'entries?couple_code=eq.' + encodeURIComponent(cfg.code) +
-        '&updated_at=gte.' + encodeURIComponent(since) +
-        '&order=updated_at.asc&limit=3000'
-      );
       let maxSeen = data.settings.lastPullAt || null;
-      for (const r of rows || []) {
-        const remote = fromRow(r);
-        if (!maxSeen || r.updated_at > maxSeen) maxSeen = r.updated_at;
-        const local = data.entries.find((e) => e.id === remote.id);
-        if (!local) {
-          data.entries.push(remote);
-          changed = true;
-        } else if (remote.updatedAt > local.updatedAt && !local.dirty) {
-          Object.assign(local, remote);
-          changed = true;
+      /* Supabase 기본 응답 상한 안쪽인 1,000건씩 고정된 순서로 끝까지 받는다.
+         모든 페이지가 끝나기 전에는 status 를 ok 로 만들지 않으므로, 앱이
+         불완전한 원장으로 잔액 기준 합계를 확정하지 않는다. */
+      const pageSize = 1000;
+      let cursorTs = null;
+      let cursorId = '';
+      while (true) {
+        /* offset 페이지는 페이지 사이에 앞쪽 행이 수정돼 뒤로 이동하면 아직 못 받은
+           다음 행을 건너뛸 수 있다. (updated_at,id) 복합 커서로 이어 받아, 동시
+           수정된 행은 중복될 수만 있고 미수신 행은 빠지지 않게 한다. */
+        const cursorFilter = cursorTs
+          ? '&or=(updated_at.gt.' + encodeURIComponent(cursorTs)
+            + ',and(updated_at.eq.' + encodeURIComponent(cursorTs)
+            + ',id.gt.' + encodeURIComponent(cursorId) + '))'
+          : '&updated_at=gte.' + encodeURIComponent(since);
+        const page = (await req(
+          'entries?couple_code=eq.' + encodeURIComponent(cfg.code) +
+          cursorFilter +
+          '&order=updated_at.asc,id.asc' +
+          '&limit=' + pageSize
+        )) || [];
+        for (const r of page) {
+          const remote = fromRow(r);
+          if (!maxSeen || r.updated_at > maxSeen) maxSeen = r.updated_at;
+          const local = data.entries.find((e) => e.id === remote.id);
+          if (!local) {
+            data.entries.push(remote);
+            changed = true;
+          } else if (remote.updatedAt > local.updatedAt && !local.dirty) {
+            Object.assign(local, remote);
+            changed = true;
+          }
         }
+        if (page.length < pageSize) break;
+        const tail = page[page.length - 1];
+        cursorTs = tail.updated_at;
+        cursorId = tail.id;
       }
       if (maxSeen) data.settings.lastPullAt = maxSeen;
 
@@ -198,14 +230,14 @@ window.Sync = (function () {
 
   /* 설정 항목 ↔ 서버 컬럼 이름 대응 */
   const META_COLS = {
-    categories: 'categories', budget: 'budget', currency: 'currency',
+    categories: 'categories', budget: 'budget',
     splitRatio: 'split_ratio', fixedShare: 'fixed_share',
     goal: 'goal', recurring: 'recurring'
     // methods / retiredMethods 는 아래에서 합집합으로 따로 병합한다
   };
   const NUM_FIELDS = ['budget', 'splitRatio', 'fixedShare'];
 
-  /* 분류·예산·통화·분담비율·저축목표·반복지출·결제수단·두 사람 이름을 공유
+  /* 분류·예산·분담비율·저축목표·반복지출·결제수단·두 사람 이름을 공유
    *
    * 설정은 '항목마다' 따로 비교한다. 예전처럼 통째로 비교하면,
    * 한쪽에서 카드를 하나 추가한 것만으로 다른 쪽이 정해둔 예산까지 덮어써 사라진다. */
@@ -218,7 +250,8 @@ window.Sync = (function () {
     const EPOCH = '1970-01-01T00:00:00Z';
     s.metaTs = s.metaTs || {};
     /* 예전 버전에서 올라온 기기는 항목별 시각이 없다. 이때는 전체 시각을 쓴다. */
-    const remoteTsAll = (remote && remote.extra && remote.extra.metaTs) || {};
+    const remoteExtra = (remote && remote.extra) || {};
+    const remoteTsAll = remoteExtra.metaTs || {};
     const rTs = (f) => remoteTsAll[f] || (remote ? remote.updated_at : EPOCH);
     const lTs = (f) => s.metaTs[f] || s.metaUpdatedAt || EPOCH;
 
@@ -230,9 +263,23 @@ window.Sync = (function () {
         if (rv == null) continue;
         if (rTs(f) <= lTs(f)) continue;
         s[f] = NUM_FIELDS.indexOf(f) >= 0 ? Number(rv) : rv;
+        /* 비율/정액은 '누구 기준 값인지'까지 해당 필드와
+           같이 승패해야 다른 기기에서 보수 비율을 정확히 계산한다. */
+        if (f === 'splitRatio') s.splitRatioOwner = remoteExtra.splitRatioOwner || '';
+        if (f === 'fixedShare') s.fixedShareOwner = remoteExtra.fixedShareOwner || '';
         s.metaTs[f] = rTs(f);
         changed = true;
       }
+      /* 값과 시각은 이미 같지만 owner 만 비어 있는 중간 버전도
+         스키마 변경 없이 복구한다. */
+      [['splitRatio', 'splitRatioOwner'], ['fixedShare', 'fixedShareOwner']]
+        .forEach(([field, ownerField]) => {
+          const col = META_COLS[field];
+          if (s[ownerField] || !remoteExtra[ownerField] || remote[col] == null) return;
+          if (rTs(field) < lTs(field) || Number(remote[col]) !== Number(s[field])) return;
+          s[ownerField] = remoteExtra[ownerField];
+          changed = true;
+        });
     }
 
     /* 2) 결제수단은 합집합으로 병합한다.
@@ -250,7 +297,6 @@ window.Sync = (function () {
     /* 알림 구독도 합집합으로 병합한다.
        기기마다 자기 것만 등록하므로, 늦게 저장한 쪽이 상대 걸 지우면 안 된다.
        알림을 끈 기기(retiredSubs)는 목록에서 뺀다. */
-    const remoteExtra = (remote && remote.extra) || {};
     const retiredSubs = [...new Set([
       ...(s.retiredSubs || []), ...(remoteExtra.retiredSubs || [])
     ])];
@@ -305,7 +351,6 @@ window.Sync = (function () {
         couple_code: cfg.code,
         categories: s.categories,
         budget: s.budget,
-        currency: s.currency,
         split_ratio: s.splitRatio,
         fixed_share: s.fixedShare,
         goal: s.goal,
@@ -318,7 +363,9 @@ window.Sync = (function () {
         method: 'POST',
         headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
         body: JSON.stringify([extraOk
-          ? { ...row, extra: { metaTs: tsOut, retiredMethods: retiredOut,
+          ? { ...row, extra: { ...remoteExtra, metaTs: tsOut, retiredMethods: retiredOut,
+                               splitRatioOwner: s.splitRatioOwner || null,
+                               fixedShareOwner: s.fixedShareOwner || null,
                                pushSubs: subsOut, retiredSubs, pushPrefs: prefsOut } }
           : row])
       });

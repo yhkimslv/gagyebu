@@ -1,6 +1,12 @@
 {
-  "version": "1.9.3",
-  "notes": "",
-  "downloadPage": "",
-  "downloads": {}
+  "version": "1.10.6",
+  "notes": "Shared purchases imported from the couple ledger now count only your share in monthly spending, budgets, and statistics while card balances keep the full amount actually charged.",
+  "notesEn": "Shared purchases imported from the couple ledger now count only your share in monthly spending, budgets, and statistics while card balances keep the full amount actually charged.",
+  "notesKo": "커플 가계부에서 가져온 함께 쓴 돈은 이번 달 지출·예산·통계에는 내 몫만 반영하고, 카드 잔액에는 실제 결제된 전체 금액을 유지합니다.",
+  "downloadPage": "https://github.com/yhkimslv/gagyebu-releases/releases/tag/v1.10.6",
+  "downloads": {
+    "win": "https://github.com/yhkimslv/gagyebu-releases/releases/download/v1.10.6/setup-1.10.6-win.exe",
+    "mac-arm64": "https://github.com/yhkimslv/gagyebu-releases/releases/download/v1.10.6/setup-1.10.6-mac-arm64.dmg",
+    "mac-x64": "https://github.com/yhkimslv/gagyebu-releases/releases/download/v1.10.6/setup-1.10.6-mac-x64.dmg"
+  }
 }

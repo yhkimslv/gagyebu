@@ -1,6 +1,12 @@
 {
-  "version": "1.7.4",
-  "notes": "",
-  "downloadPage": "",
-  "downloads": {}
+  "version": "1.8.7",
+  "notes": "Shared-spending ratios and fixed-cost shares are now tied to a person's name for accurate personal-share calculations.",
+  "notesEn": "Shared-spending ratios and fixed-cost shares are now tied to a person's name for accurate personal-share calculations.",
+  "notesKo": "함께 쓴 돈의 분담 비율과 고정비 정액 부담을 사람 이름과 연결해 개인별 부담액을 정확히 계산합니다.",
+  "downloadPage": "https://github.com/yhkimslv/gagyebu-releases/releases/tag/v1.8.7",
+  "downloads": {
+    "win": "https://github.com/yhkimslv/gagyebu-releases/releases/download/v1.8.7/setup-1.8.7-win.exe",
+    "mac-arm64": "https://github.com/yhkimslv/gagyebu-releases/releases/download/v1.8.7/setup-1.8.7-mac-arm64.dmg",
+    "mac-x64": "https://github.com/yhkimslv/gagyebu-releases/releases/download/v1.8.7/setup-1.8.7-mac-x64.dmg"
+  }
 }

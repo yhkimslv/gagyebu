@@ -8,27 +8,30 @@ const PALETTE = {
 const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 const SAVE_CAT = '저축';
 const FIXED_CAT = '고정지출';
+const REQUIRED_CATEGORY_KEYS = new Set(['savings', 'fixed', 'other']);
 
 function defaultCategories() {
   return {
     /* slot: 색 (1~8 이 서로 다른 색, 0 은 회색). 기본 분류를 8개로 맞춰 도넛 색이 겹치지 않게 한다.
-       tip: 이 분류로 입력하면 팁 계산기가 나온다 */
+       tip: 이 분류로 입력하면 팁 계산기가 나온다.
+       name 은 예전 내역·카드 적립률이 참조하는 호환용 키라 바꾸지 않고,
+       nameKo/nameEn 만 화면 언어에 맞춰 보여준다. */
     expense: [
-      { name: '식비', emoji: '🍚', slot: 1, tip: true },
-      { name: '카페·간식', emoji: '☕', slot: 2, tip: true },
-      { name: '장보기·마트', emoji: '🛒', slot: 3 },
-      { name: '교통·차량', emoji: '🚗', slot: 4 },
-      { name: '문화·여가', emoji: '🎬', slot: 5, tip: true },
-      { name: SAVE_CAT, emoji: '🐷', slot: 6 },
-      { name: FIXED_CAT, emoji: '🔁', slot: 7 },
-      { name: '쇼핑·미용', emoji: '🛍️', slot: 8 },
-      { name: '기타', emoji: '📦', slot: 0 }
+      { key: 'food', name: '식비', nameKo: '식비', nameEn: 'Food', emoji: '🍚', slot: 1, tip: true },
+      { key: 'cafe', name: '카페·간식', nameKo: '카페·간식', nameEn: 'Cafe & snacks', emoji: '☕', slot: 2, tip: true },
+      { key: 'groceries', name: '장보기·마트', nameKo: '장보기·마트', nameEn: 'Groceries', emoji: '🛒', slot: 3 },
+      { key: 'transport', name: '교통·차량', nameKo: '교통·차량', nameEn: 'Transport', emoji: '🚗', slot: 4 },
+      { key: 'leisure', name: '문화·여가', nameKo: '문화·여가', nameEn: 'Fun & leisure', emoji: '🎬', slot: 5, tip: true },
+      { key: 'savings', name: SAVE_CAT, nameKo: SAVE_CAT, nameEn: 'Savings', emoji: '🐷', slot: 6 },
+      { key: 'fixed', name: FIXED_CAT, nameKo: FIXED_CAT, nameEn: 'Fixed costs', emoji: '🔁', slot: 7 },
+      { key: 'shopping', name: '쇼핑·미용', nameKo: '쇼핑·미용', nameEn: 'Shopping & beauty', emoji: '🛍️', slot: 8 },
+      { key: 'other', name: '기타', nameKo: '기타', nameEn: 'Other', emoji: '📦', slot: 0 }
     ],
     income: [
-      { name: '월급', emoji: '💰', slot: 1 },
-      { name: '용돈', emoji: '🎁', slot: 5 },
-      { name: '부수입', emoji: '💵', slot: 3 },
-      { name: '기타', emoji: '📦', slot: 0 }
+      { key: 'salary', name: '월급', nameKo: '월급', nameEn: 'Salary', emoji: '💰', slot: 1 },
+      { key: 'allowance', name: '용돈', nameKo: '용돈', nameEn: 'Allowance', emoji: '🎁', slot: 5 },
+      { key: 'side-income', name: '부수입', nameKo: '부수입', nameEn: 'Side income', emoji: '💵', slot: 3 },
+      { key: 'other', name: '기타', nameKo: '기타', nameEn: 'Other', emoji: '📦', slot: 0 }
     ]
   };
 }
@@ -65,9 +68,12 @@ function defaultSettings() {
     pushPrefs: { card: true, budget: true, update: true },
     link: null,              // 커플 가계부에서 가져오기 설정
     linkPullAt: null,        // 커플 가계부를 어디까지 읽어왔는지
+    linkShareVersion: 0,     // 내 몫 계산 방식 마이그레이션 버전 (이 기기 전용)
+    linkShareMetaKey: '',    // 비율·정액 규칙이 바뀌면 과거 내역도 다시 계산
     metaTs: null,            // 설정 항목별로 마지막에 바꾼 시각
     metaUpdatedAt: null,
-    metaDirty: false
+    metaDirty: false,
+    categoryNamesVersion: 0  // 두 언어 분류명 마이그레이션 완료 여부 (기기별)
   };
 }
 
@@ -89,15 +95,29 @@ function seedMetaTs(s) {
 let data = null;
 let view = 'list';
 let curMonth = todayStr().slice(0, 7);
-let filters = { q: '', category: '' };
+let filters = { q: '', category: '', method: '' };
 let selectedDay = null;
+let methodHistoryId = null;
+let methodHistoryReturnView = 'cards';
+let methodHistoryReturnPosition = null;
 let editingId = null;
 let draft = null;
 let setDraftCats = null;
+let editingCategory = null;
+let categoryDrag = null;
+let categoryMigrationPending = false;
 let setDraftRecur = null;
+let editingRecurringId = null;
 let confirmCb = null;
 let syncTimer = null;
 let toastTimer = null;
+/* 내역을 수정하는 동안 뒤의 화면이 다시 그려져도, 누르기 전에
+   보던 행이 같은 화면 위치에 남도록 한다. 모달 내부의 스크롤과는 다른,
+   본문(window) 스크롤의 돌아갈 자리이다. */
+let viewScrollReturn = null;
+let viewScrollToken = 0;
+let statsSelectionMonth = curMonth;
+let statsSelectedCategories = new Set();
 
 /* ==================== 유틸 ==================== */
 const $ = (s) => document.querySelector(s);
@@ -108,6 +128,89 @@ const uuid = () => (crypto.randomUUID ? crypto.randomUUID()
       const r = (Math.random() * 16) | 0;
       return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
     }));
+
+function currentViewStateKey() {
+  return JSON.stringify({
+    view, curMonth, selectedDay, methodHistoryId,
+    q: filters.q, category: filters.category, method: filters.method
+  });
+}
+
+function pageScrollTop() {
+  return Number(window.scrollY
+    || (document.scrollingElement && document.scrollingElement.scrollTop)
+    || document.documentElement.scrollTop || 0);
+}
+
+/* 재렌더링하면 행 위쪽의 요약·필터 높이가 바뀐 수 있어 scrollY 하나만으로는
+   보던 행이 좀씩 밀린다. 가능하면 행을 식별해 화면 위에서의 위치까지 기억한다. */
+function scrollAnchorFor(el) {
+  if (!el || !el.closest) return null;
+  const row = el.closest('[data-id], [data-payedit], [data-pay]');
+  if (!row) return null;
+  for (const attr of ['data-id', 'data-payedit', 'data-pay']) {
+    if (row.hasAttribute(attr)) {
+      return { attr, value: row.getAttribute(attr), top: row.getBoundingClientRect().top };
+    }
+  }
+  return null;
+}
+
+function findScrollAnchor(anchor) {
+  if (!anchor) return null;
+  return [...document.querySelectorAll(`[${anchor.attr}]`)]
+    .find((el) => el.getAttribute(anchor.attr) === anchor.value) || null;
+}
+
+function rememberViewScroll(modalId, sourceEl) {
+  viewScrollToken++;
+  viewScrollReturn = {
+    modalId,
+    stateKey: currentViewStateKey(),
+    scrollTop: pageScrollTop(),
+    anchor: scrollAnchorFor(sourceEl)
+  };
+}
+
+/* 수정 중 달·탭·검색조건이 달라졌다면 이전 좌표는 다른 화면의 값이다.
+   그런 경우에는 오래된 위치로 억지로 돌리지 않는다. */
+function restoreViewScroll(modalId) {
+  const saved = viewScrollReturn;
+  if (!saved || (modalId && saved.modalId !== modalId)) return;
+  viewScrollReturn = null;
+  if (saved.stateKey !== currentViewStateKey()) return;
+  const token = ++viewScrollToken;
+
+  const restore = () => {
+    if (token !== viewScrollToken || saved.stateKey !== currentViewStateKey()) return;
+    const anchor = findScrollAnchor(saved.anchor);
+    if (anchor && Number.isFinite(saved.anchor.top)) {
+      const delta = anchor.getBoundingClientRect().top - saved.anchor.top;
+      if (Math.abs(delta) > 0.5) window.scrollBy(0, delta);
+    } else {
+      const scrollEl = document.scrollingElement || document.documentElement;
+      window.scrollTo(0, Math.min(saved.scrollTop,
+        Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)));
+    }
+  };
+
+  /* innerHTML 교체와 모달 폐기가 반영된 뒤 복원한다. iOS에서는 키보드가
+     닫히는 도중 한 번 더 화면을 밀 수 있어 짧게 후속 보정한다. */
+  requestAnimationFrame(() => requestAnimationFrame(restore));
+  const vv = window.visualViewport;
+  const onResize = () => requestAnimationFrame(restore);
+  if (vv) vv.addEventListener('resize', onResize);
+  setTimeout(() => {
+    if (vv) vv.removeEventListener('resize', onResize);
+    restore();
+  }, 240);
+}
+
+function closeModal(id) {
+  const modal = $('#' + id);
+  if (modal) modal.classList.add('hidden');
+  restoreViewScroll(id);
+}
 
 /* 함수 선언으로 둬야 파일 위쪽의 curMonth 초기화에서도 쓸 수 있다 */
 function pad2(n) { return String(n).padStart(2, '0'); }
@@ -123,9 +226,10 @@ function nowTime() { const d = new Date(); return pad2(d.getHours()) + ':' + pad
 function fmtTime(t) {
   if (!t || !/^\d{1,2}:\d{2}$/.test(t)) return '';
   const [h, m] = t.split(':').map(Number);
-  const ampm = h < 12 ? '오전' : '오후';
+  const ampm = h < 12 ? (I18n.lang === 'en' ? 'AM' : '오전')
+    : (I18n.lang === 'en' ? 'PM' : '오후');
   const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${ampm} ${h12}:${pad2(m)}`;
+  return I18n.lang === 'en' ? `${h12}:${pad2(m)} ${ampm}` : `${ampm} ${h12}:${pad2(m)}`;
 }
 /* 같은 날 안에서는 늦은 시각이 위로. 시간이 없는 기록은 맨 아래로 보낸다. */
 function byTimeDesc(a, b) {
@@ -139,9 +243,80 @@ function isDark() { return window.matchMedia('(prefers-color-scheme: dark)').mat
 function slotColor(slot) { return PALETTE[isDark() ? 'dark' : 'light'][slot] || PALETTE.light[0]; }
 function cssVar(name) { return getComputedStyle(document.body).getPropertyValue(name).trim(); }
 
-function catOf(type, name) {
-  const list = data.settings.categories[type] || [];
-  return list.find((c) => c.name === name) || null;
+function catIn(categories, type, name) {
+  const list = (categories && categories[type]) || [];
+  return list.find((c) => c.name === name || c.nameKo === name || c.nameEn === name) || null;
+}
+function catOf(type, name) { return catIn(data.settings.categories, type, name); }
+function catLabel(c, lang = I18n.lang) {
+  if (!c) return '';
+  return (lang === 'en' ? (c.nameEn || c.nameKo) : (c.nameKo || c.nameEn)) || c.name || '';
+}
+function categoryLabel(type, name) {
+  return catLabel(catOf(type, name)) || name || '';
+}
+function canonicalCategory(type, name, fallback = '') {
+  const c = catOf(type, name);
+  return c ? c.name : (name || fallback);
+}
+
+/* 단어 중간의 같은 글자는 기본 부분 검색으로, "ㅍㅋ" 같은 한글
+   초성은 각 음절의 첫 자음을 뽑아서 찾는다. */
+const HANGUL_INITIALS = [...'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ'];
+function normalizeSearchText(value) {
+  return String(value || '').normalize('NFC').toLocaleLowerCase('ko-KR')
+    .replace(/\s+/g, ' ').trim();
+}
+function hangulInitialText(value) {
+  return [...normalizeSearchText(value)].map((ch) => {
+    const code = ch.codePointAt(0);
+    return code >= 0xAC00 && code <= 0xD7A3
+      ? HANGUL_INITIALS[Math.floor((code - 0xAC00) / 588)] : ch;
+  }).join('');
+}
+function matchesSearch(haystack, query) {
+  const text = normalizeSearchText(haystack);
+  const q = normalizeSearchText(query);
+  if (!q || text.includes(q)) return true;
+  const compact = q.replace(/\s+/g, '');
+  return /^[ㄱ-ㅎ]+$/.test(compact)
+    && hangulInitialText(text).replace(/\s+/g, '').includes(compact);
+}
+function draftCategoryLabel(type, name) {
+  return catLabel(catIn(setDraftCats || data.settings.categories, type, name)) || name || '';
+}
+function categoryKeyFor(key, fallback) {
+  const c = (data.settings.categories.expense || []).find((x) => x.key === key);
+  return c ? c.name : fallback;
+}
+function isCategoryKey(type, name, key) {
+  const c = catOf(type, name);
+  return !!(c && c.key === key);
+}
+
+/* 예전 데이터에는 name 하나만 있다. 기본 분류는 양쪽 이름을 정확히 복원하고,
+   사용자가 만든 분류는 기존 이름을 두 언어의 안전한 폴백으로 둔다. name 자체는
+   내역과 카드 적립률의 참조 키이므로 절대 바꾸지 않는다. */
+function migrateCategoryNames(categories) {
+  if (!categories) return false;
+  const defs = defaultCategories();
+  let changed = false;
+  ['expense', 'income'].forEach((type) => {
+    if (!Array.isArray(categories[type]) || !categories[type].length) {
+      categories[type] = JSON.parse(JSON.stringify(defs[type]));
+      changed = true;
+    }
+    categories[type].forEach((c) => {
+      const values = [c.name, c.nameKo, c.nameEn].filter(Boolean);
+      const d = defs[type].find((x) => c.key === x.key
+        || values.includes(x.name) || values.includes(x.nameKo) || values.includes(x.nameEn));
+      if (!c.name) { c.name = (c.nameKo || c.nameEn || '').trim(); changed = true; }
+      if (!c.nameKo) { c.nameKo = d ? d.nameKo : c.name; changed = true; }
+      if (!c.nameEn) { c.nameEn = d ? d.nameEn : c.name; changed = true; }
+      if (d && !c.key) { c.key = d.key; changed = true; }
+    });
+  });
+  return changed;
 }
 function catColorOf(e) { const c = catOf(e.type, e.category); return slotColor(c ? c.slot : 0); }
 function catEmojiOf(e) { const c = catOf(e.type, e.category); return c ? c.emoji : '📦'; }
@@ -157,9 +332,40 @@ function methodLabel(id) {
   const m = methodOf(id);
   return m ? m.emoji + ' ' + m.name : '';
 }
+
+/* 결제수단별 조회에서 쓰는 특수 묶음. 삭제한 결제수단은 원래 id가 내역에
+   남아 있으므로 빠뜨리지 않고 한 묶음으로 보여준다. */
+const METHOD_NONE = '__method_none__';
+const METHOD_RETIRED = '__method_retired__';
+function methodRefMatches(id, ref) {
+  if (id === METHOD_NONE) return !ref;
+  if (id === METHOD_RETIRED) return !!ref && !methodOf(ref);
+  return ref === id;
+}
+function entryMatchesMethod(e, id) {
+  if (!e) return false;
+  if (e.type === 'cardpay') {
+    /* '결제수단 없음'에는 출금 계좌를 생략한 모든 카드값 기록을 섞지 않는다.
+       반면 삭제된 카드는 대상/출금 어느 쪽이든 해당하면 복구 가능한 기록으로 보인다. */
+    if (id === METHOD_NONE) return false;
+    return methodRefMatches(id, e.method) || methodRefMatches(id, e.from);
+  }
+  return (e.type === 'expense' || e.type === 'income') && methodRefMatches(id, e.method);
+}
+function methodHistoryInfo(id) {
+  const m = methodOf(id);
+  if (m) return { id, name: m.name, emoji: m.emoji || (isCreditM(m) ? '💳' : '💵'), method: m };
+  if (id === METHOD_NONE) return { id, name: '결제수단 없음', emoji: '❔', method: null };
+  return { id, name: '삭제된 결제수단', emoji: '🗑️', method: null };
+}
 function methodRate(m, category) {
   if (!m) return 0;
-  const r = m.rates && m.rates[category];
+  const c = catOf('expense', category);
+  /* Prefer the immutable storage key over legacy localized aliases when both
+     remain in an older reward-rate map. */
+  const keys = [...new Set([c && c.name, category, c && c.nameKo, c && c.nameEn].filter(Boolean))];
+  const key = keys.find((k) => m.rates && m.rates[k] != null && m.rates[k] !== '');
+  const r = key && m.rates[key];
   return Number(r != null && r !== '' ? r : (m.base || 0)) || 0;
 }
 /* 이 분류에서 적립률이 가장 높은 카드 (동률이면 먼저 등록한 것) */
@@ -174,14 +380,20 @@ function bestMethodFor(category) {
 
 /* --- 금액 --- */
 function isUSD() { return data.settings.currency === 'USD'; }
-function roundMoney(n) { return isUSD() ? Math.round(n * 100) / 100 : Math.round(n); }
+function roundMoney(n) {
+  if (!n) return 0;
+  const unit = isUSD() ? 100 : 1;
+  const abs = Math.abs(n);
+  return Math.sign(n) * Math.round((abs + Number.EPSILON * Math.max(1, abs)) * unit) / unit;
+}
 
 function fmtMoney(n) {
   if (isUSD()) {
     return (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US',
       { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
-  return Math.round(n).toLocaleString('ko-KR') + '원';
+  const amount = Math.round(n).toLocaleString(I18n.lang === 'en' ? 'en-US' : 'ko-KR');
+  return I18n.lang === 'en' ? '₩' + amount : amount + '원';
 }
 function fmtCompact(n) {
   if (isUSD()) {
@@ -190,9 +402,16 @@ function fmtCompact(n) {
     const d = a < 100 ? 2 : 0;
     return '$' + a.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
   }
-  return Math.abs(Math.round(n)).toLocaleString('ko-KR');
+  return Math.abs(Math.round(n)).toLocaleString(I18n.lang === 'en' ? 'en-US' : 'ko-KR');
 }
-function monthLabel(m) { const [y, mo] = m.split('-'); return y + '년 ' + Number(mo) + '월'; }
+function monthLabel(m) {
+  const [y, mo] = m.split('-');
+  if (I18n.lang === 'en') {
+    return new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+      .format(new Date(Date.UTC(Number(y), Number(mo) - 1, 1)));
+  }
+  return y + '년 ' + Number(mo) + '월';
+}
 function shiftMonth(m, d) {
   const [y, mo] = m.split('-').map(Number);
   const dt = new Date(y, mo - 1 + d, 1);
@@ -204,6 +423,33 @@ function daysInMonth(m) { const [y, mo] = m.split('-').map(Number); return new D
 function liveEntries() { return data.entries.filter((e) => !e.deleted); }
 function ledger() { return liveEntries().filter((e) => e.type === 'expense' || e.type === 'income'); }
 function monthLedger(m) { return ledger().filter((e) => e.date && e.date.startsWith(m)); }
+
+/* 커플 가계부 복사본은 실제 카드 청구액(amount)과 내 최종 부담액이 다를 수 있다.
+   월 지출·예산·달력·통계는 personalAmount 를 쓰고, 카드/계좌 잔액과 카드 상세
+   내역은 계속 amount 를 써야 실제 명세서와 맞는다. 0도 유효한 값이다
+   (정산 송금·수금은 소비 통계에서 제외). */
+function reportAmount(e) {
+  if (!e || e.reportExcluded) return 0;
+  if (e.fromCouple && e.personalAmount !== null && e.personalAmount !== ''
+      && Number.isFinite(Number(e.personalAmount))) return Number(e.personalAmount);
+  return Number(e.amount) || 0;
+}
+function reportTip(e) {
+  if (!e || e.reportExcluded) return 0;
+  if (e.fromCouple && e.personalTip !== null && e.personalTip !== ''
+      && Number.isFinite(Number(e.personalTip))) return Number(e.personalTip);
+  return Number(e.tip) || 0;
+}
+
+/* 커플 원본을 개인 앱에서 직접 고치면 이후 원본 동기화를 끊고, 그 순간부터
+   평범한 개인 내역처럼 계산한다. 예전 personalAmount 가 남으면 수정한 총액과
+   월 지출이 달라지므로 계산 전용 필드도 함께 걷어낸다. */
+function detachCoupleCopy(e) {
+  if (!e || !e.fromCouple) return;
+  e.linkDetached = true;
+  ['personalAmount', 'personalTip', 'reportExcluded', 'couplePayer', 'coupleSplit',
+    'coupleMethod', 'coupleFixed', 'coupleTransfer'].forEach((k) => delete e[k]);
+}
 
 /* ==================== 카드 갚기 ====================
  *
@@ -219,39 +465,150 @@ function cardPays() { return liveEntries().filter((e) => e.type === 'cardpay'); 
 
 function isCreditM(m) { return !!m && m.type === 'credit'; }
 
-/* 기준일 다음날부터의 기록만 센다.
-   기준일까지의 일은 이미 시작 금액에 들어 있기 때문이다. */
-function sinceFilter(since) { return (e) => !since || e.date > since; }
+function hasOpeningBaseline(m) {
+  return !!(m && m.openingBaseline !== null && m.openingBaseline !== ''
+    && Number.isFinite(Number(m.openingBaseline)));
+}
+
+/* 결제수단의 잔액 시작점. 구버전의 opening/openingDate 도 그대로 읽는다.
+   openingSet 으로 0원/$0 시작점과 '설정 안 함'을 구분한다. */
+function methodOpening(m) {
+  if (!m || m.openingSet === false) return null;
+  const validDate = /^\d{4}-\d{2}-\d{2}$/.test(m.openingDate || '');
+  const explicit = m.openingSet === true;
+  const legacy = m.openingSet == null && Number(m.opening) > 0 && validDate;
+  if ((!explicit && !legacy) || !validDate) return null;
+  const baselineReady = hasOpeningBaseline(m);
+  return {
+    amount: Number(m.opening) || 0,
+    date: m.openingDate,
+    before: m.openingBefore === 'include' ? 'include' : 'exclude',
+    baseline: baselineReady ? Number(m.openingBaseline) : 0,
+    baselineReady
+  };
+}
+
+/* 기존 의미를 보존한다: 시작 금액은 기준일 '하루 마감' 잔액이고,
+   기본값은 그 다음날부터 오늘까지의 내역만 센다. 사용자가 과거 변경 반영을
+   고르면 기준점을 저장한 뒤 추가·수정·삭제된 과거 내역의 차이만 함께 센다. */
+function balanceEntryFilter(m) {
+  const start = methodOpening(m);
+  const today = todayStr();
+  return (e) => !!(e && e.date && e.date <= today
+    && (!start || start.before === 'include' || e.date > start.date));
+}
+
+/* 기준일 이전 내역이 잔액에 미치는 부호까지 합친 값.
+   기준점을 저장할 때 이 값을 스냅샷으로 남기면, 이미 시작 금액에 들어 있던
+   과거 기록은 다시 세지 않고 나중에 바뀐 차이만 정확히 반영할 수 있다. */
+function historicalBalanceContribution(m, cutoff) {
+  if (!m || !cutoff) return 0;
+  const rows = liveEntries().filter((e) => e.date && e.date <= cutoff);
+  let total = 0;
+  if (isCreditM(m)) {
+    rows.forEach((e) => {
+      if (e.method !== m.id) return;
+      if (e.type === 'expense') total += Number(e.amount) || 0;
+      else if (e.type === 'income' || e.type === 'cardpay') total -= Number(e.amount) || 0;
+    });
+  } else {
+    rows.forEach((e) => {
+      if (e.method === m.id && e.type === 'income') total += Number(e.amount) || 0;
+      else if (e.method === m.id && e.type === 'expense') total -= Number(e.amount) || 0;
+      else if (e.from === m.id && e.type === 'cardpay') total -= Number(e.amount) || 0;
+    });
+  }
+  return roundMoney(total);
+}
+
+function historyDelta(m, start) {
+  if (!start || start.before !== 'include' || !start.baselineReady) return 0;
+  return roundMoney(historicalBalanceContribution(m, start.date) - start.baseline);
+}
+
+/* v1.10.0 개발판에서 먼저 만든 기준점에도 스냅샷을 한 번 채운다.
+   구버전의 opening/openingDate 만 있는 자료는 사용자가 다시 저장할 때 전환한다. */
+function migrateOpeningBaselines() {
+  let changed = false;
+  methods().forEach((m) => {
+    const start = methodOpening(m);
+    if (m.openingSet !== true || !start || hasOpeningBaseline(m)) return;
+    m.openingBaseline = historicalBalanceContribution(m, start.date);
+    changed = true;
+  });
+  return changed;
+}
+
+/* 다른 개인 동기화 원장에 처음 연결하거나 원장을 바꾸면 기존 로컬 기준 합계는
+   그 원격 내역을 반영하지 못한 값이다. methods 타임스탬프는 건드리지 않고
+   비워 두어 첫 pull 뒤 합쳐진 원장으로 다시 확정한다. */
+function invalidateOpeningBaselines() {
+  let changed = false;
+  methods().forEach((m) => {
+    if (m.openingSet !== true || !hasOpeningBaseline(m)) return;
+    m.openingBaseline = null;
+    changed = true;
+  });
+  return changed;
+}
+
+function openingLabel(start) {
+  if (!start) return '';
+  if (I18n.lang === 'en') {
+    const detail = start.before !== 'include' ? 'after date only'
+      : (start.baselineReady ? 'later history changes included' : 'later history changes apply after sync');
+    return `${start.date} end-of-day · ${detail}`;
+  }
+  const detail = start.before !== 'include' ? '다음날부터'
+    : (start.baselineReady ? '과거 변경 반영' : '동기화 후 과거 변경 반영');
+  return `${start.date} 마감 기준 · ${detail}`;
+}
 
 /* 신용카드 — 갚아야 할 돈 */
 function cardDebt(m) {
-  const opening = Number(m.opening) || 0;
-  const since = m.openingDate || '';
-  const after = sinceFilter(since);
-  if (!opening && !cardPays().some((e) => e.method === m.id)) return null;   // 아직 안 쓰는 카드
+  if (m.openingSet === false) return null;
+  const balanceStart = methodOpening(m);
+  const opening = balanceStart ? balanceStart.amount : 0;
+  const included = (e) => !!(e && e.date && e.date <= todayStr()
+    && (!balanceStart || e.date > balanceStart.date));
+  const touched = liveEntries().some((e) => e.method === m.id);
+  if (!balanceStart && !touched) return null;
   const spent = ledger()
-    .filter((e) => e.type === 'expense' && e.method === m.id && after(e))
+    .filter((e) => e.type === 'expense' && e.method === m.id && included(e))
     .reduce((s, e) => s + e.amount, 0);
-  const paid = cardPays().filter((e) => e.method === m.id).reduce((s, e) => s + e.amount, 0);
-  return { opening, since, spent, paid, left: Math.max(0, opening + spent - paid) };
+  const refunded = ledger()
+    .filter((e) => e.type === 'income' && e.method === m.id && included(e))
+    .reduce((s, e) => s + e.amount, 0);
+  const paid = cardPays().filter((e) => e.method === m.id && included(e))
+    .reduce((s, e) => s + e.amount, 0);
+  const priorDelta = historyDelta(m, balanceStart);
+  const rawLeft = roundMoney(opening + spent - refunded - paid + priorDelta);
+  return {
+    opening, balanceStart, spent, refunded, paid, priorDelta, rawLeft,
+    left: Math.max(0, rawLeft)
+  };
 }
 
 /* 현금·체크카드 — 남아있는 돈
    시작 금액에서 쓴 돈과 카드값 갚은 돈을 빼고, 들어온 돈을 더한다. */
 function cashLeft(m) {
-  const opening = Number(m.opening) || 0;
-  const since = m.openingDate || '';
-  const after = sinceFilter(since);
-  const mine = (e) => e.method === m.id && after(e);
+  if (m.openingSet === false) return null;
+  const balanceStart = methodOpening(m);
+  const opening = balanceStart ? balanceStart.amount : 0;
+  const included = (e) => !!(e && e.date && e.date <= todayStr()
+    && (!balanceStart || e.date > balanceStart.date));
+  const mine = (e) => e.method === m.id && included(e);
   const touched = liveEntries().some((e) => e.method === m.id || e.from === m.id);
-  if (!opening && !touched) return null;
+  if (!balanceStart && !touched) return null;
   const spent = ledger().filter((e) => e.type === 'expense' && mine(e))
     .reduce((s, e) => s + e.amount, 0);
   const earned = ledger().filter((e) => e.type === 'income' && mine(e))
     .reduce((s, e) => s + e.amount, 0);
-  const paidOut = cardPays().filter((e) => e.from === m.id && after(e))
+  const paidOut = cardPays().filter((e) => e.from === m.id && included(e))
     .reduce((s, e) => s + e.amount, 0);
-  return { opening, since, spent, earned, paidOut, left: opening + earned - spent - paidOut };
+  const priorDelta = historyDelta(m, balanceStart);
+  const left = roundMoney(opening + earned - spent - paidOut + priorDelta);
+  return { opening, balanceStart, spent, earned, paidOut, priorDelta, left };
 }
 
 /* 가진 돈 · 갚을 돈 · 순자산 */
@@ -267,11 +624,12 @@ function moneySummary() {
       if (c) assets.push({ method: m, ...c });
     }
   });
-  const have = assets.reduce((s, r) => s + r.left, 0);
-  const owe = debts.reduce((s, r) => s + r.left, 0);
-  const owedTotal = debts.reduce((s, r) => s + r.opening + r.spent, 0);
-  const paid = debts.reduce((s, r) => s + r.paid, 0);
-  return { assets, debts, have, owe, net: have - owe, owedTotal, paid };
+  const have = roundMoney(assets.reduce((s, r) => s + r.left, 0));
+  const owe = roundMoney(debts.reduce((s, r) => s + r.left, 0));
+  const owedTotal = roundMoney(debts.reduce((s, r) =>
+    s + Math.max(0, r.opening + r.spent - r.refunded + r.priorDelta), 0));
+  const paid = roundMoney(debts.reduce((s, r) => s + r.paid, 0));
+  return { assets, debts, have, owe, net: roundMoney(have - owe), owedTotal, paid };
 }
 
 function touch(e) { e.updatedAt = new Date().toISOString(); e.dirty = true; }
@@ -292,7 +650,7 @@ function afterChange() { Store.save(data); render(); scheduleSync(); }
 
 function toast(msg) {
   const el = $('#toast');
-  el.textContent = msg;
+  el.textContent = I18n.t(msg);
   el.classList.remove('hidden');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.add('hidden'), 2600);
@@ -317,9 +675,12 @@ function applyRecurring() {
           data.entries.push({
             id, date, type: 'expense',
             amount: Number(r.amount) || 0,
-            category: r.category || FIXED_CAT,
+            category: canonicalCategory('expense', r.category,
+              categoryKeyFor('fixed', FIXED_CAT)),
             memo: r.memo || '',
             method: r.method || '',      // 그 카드 잔액에도 반영되도록
+            recurringId: r.id,
+            recurringMonth: m,
             tip: 0,
             auto: true,
             updatedAt: new Date().toISOString(),
@@ -342,6 +703,9 @@ async function init() {
   if (!data.settings.categories || !data.settings.categories.expense) {
     data.settings.categories = defaultCategories();
   }
+  categoryMigrationPending = Number(data.settings.categoryNamesVersion || 0) < 1;
+  const categoriesMigrated = migrateCategoryNames(data.settings.categories);
+  let categoryMigrationSaved = categoriesMigrated;
   if (!data.settings.goal) data.settings.goal = { name: '', target: 0 };
   if (!Array.isArray(data.settings.recurring)) data.settings.recurring = [];
   if (!Array.isArray(data.settings.tipPresets)) data.settings.tipPresets = [15, 18, 20, 25];
@@ -353,19 +717,31 @@ async function init() {
   seedMetaTs(data.settings);   // 항목별 시각이 없던 예전 자료를 넘겨받는다
   const defCats = defaultCategories().expense;
   data.settings.categories.expense.forEach((c) => {
-    const d = defCats.find((x) => x.name === c.name);
+    const d = defCats.find((x) => x.key === c.key || x.name === c.name || x.nameEn === c.name);
     if (c.tip === undefined) c.tip = !!(d && d.tip);
   });
 
   I18n.setLang(data.settings.lang || 'auto', userWords, stockNames());
+  const pushLocaleMigrated = Push.refreshMetadata('나');
   seedNamesForLang();
   Sync.configure(data.settings);
+  if (categoryMigrationPending && !Sync.isConfigured()) {
+    markMeta('categories');
+    data.settings.categoryNamesVersion = 1;
+    categoryMigrationPending = false;
+    categoryMigrationSaved = true;
+  }
   Sync.onStatus(renderSyncStatus);
   bindStatic();
   bindLock();
   Lock.start();          // 잠금이 켜져 있으면 화면을 덮는다
 
-  if (applyRecurring()) Store.save(data);
+  /* 반복 지출로 생길 과거 내역까지 만든 다음 최초 기준 합계를 잡는다.
+     동기화가 연결돼 있으면 원격 과거 내역을 먼저 받은 뒤 runSync 에서 확정한다. */
+  const recurringAdded = applyRecurring();
+  const openingMigrated = Sync.isConfigured() ? false : migrateOpeningBaselines();
+  if (openingMigrated) markMeta('methods');
+  if (recurringAdded || openingMigrated || categoryMigrationSaved || pushLocaleMigrated) Store.save(data);
 
   render();
   renderSyncStatus(Sync.getStatus());
@@ -390,26 +766,138 @@ async function init() {
 function scheduleSync() { clearTimeout(syncTimer); syncTimer = setTimeout(runSync, 2500); }
 async function runSync() {
   let changed = false;
-  /* 커플 가계부에서 먼저 가져온 뒤 내 기기끼리 동기화한다.
-     그래야 가져온 기록이 같은 차례에 다른 기기로도 넘어간다. */
+  let linkChanged = false;
+  /* 먼저 내 기기끼리 합쳐야 다른 기기에서 직접 고친 커플 복사본(linkDetached)을
+     받은 뒤 원본을 확인할 수 있다. 그 다음 커플 원본을 가져오고, 새로 들어온 게
+     있으면 한 번 더 올려 같은 차례에 다른 개인 기기로도 보낸다. */
+  if (Sync.isConfigured()) {
+    const r = await Sync.syncNow(data);
+    if (r.changed) changed = true;
+    /* 최신 원격 설정을 받은 다음 두 언어 이름을 붙인다. 이렇게 해야 첫 업그레이드
+       기기가 오래된 로컬 설정으로 다른 기기의 최신 분류를 덮어쓰지 않는다. */
+    if (Sync.getStatus().state === 'ok') {
+      const migrated = migrateCategoryNames(data.settings.categories);
+      if (categoryMigrationPending || migrated) {
+        markMeta('categories');
+        data.settings.categoryNamesVersion = 1;
+        categoryMigrationPending = false;
+        changed = true;
+        const pushed = await Sync.syncNow(data);
+        if (pushed.changed) changed = true;
+      }
+    }
+  }
   try {
     if (Link.cfgOf(data.settings)) {
       const r = await Link.pull(data);
-      if (r.changed) changed = true;
+      if (r.changed) { changed = true; linkChanged = true; }
     }
   } catch (e) {
     console.log('커플 가계부 가져오기 실패:', e.message);
   }
-  if (Sync.isConfigured()) {
+  if (linkChanged && Sync.isConfigured()) {
     const r = await Sync.syncNow(data);
     if (r.changed) changed = true;
   }
   if (changed) applyRecurring();
+  /* 동기화가 끝난 뒤에만 미확정 기준 합계를 채운다. Link.pull 로 들어온
+     과거 커플 내역까지 포함한 상태라 업그레이드 직후 잔액이 튀지 않는다. */
+  const openingMigrated = Sync.isConfigured() && Sync.getStatus().state === 'ok'
+    ? migrateOpeningBaselines() : false;
+  if (openingMigrated) markMeta('methods');
+  /* 설정 화면이 열린 채 동기화돼도 다른 초안 필드는 보존하고, 방금 확정된
+     같은 범위의 baseline 만 초안에 옮겨 다음 저장에서 null 로 되돌아가지 않게 한다. */
+  if (openingMigrated && Array.isArray(setDraftMethods)) {
+    setDraftMethods.forEach((draft) => {
+      const saved = methodOf(draft.id);
+      if (!saved || draft.openingSet !== true || saved.openingSet !== true
+          || draft.type !== saved.type || draft.openingDate !== saved.openingDate) return;
+      if (!hasOpeningBaseline(draft) && hasOpeningBaseline(saved)) {
+        draft.openingBaseline = Number(saved.openingBaseline);
+      }
+    });
+  }
   Store.saveNow(data);
-  if (changed) render();
+  if (changed || openingMigrated) render();
+  if (openingMigrated) scheduleSync();
 }
 
 /* ==================== 이벤트 ==================== */
+
+/*
+ * 폼이 <form> 태그를 쓰지 않아도 현재 열린 편집 창에서 Enter로 저장할 수
+ * 있게 한다. 한글 IME가 글자 조합을 끝내는 Enter는 저장으로 처리하지 않는다.
+ * Ctrl/Cmd+A는 현재 필드 전체 선택으로 맞추고, C·X·V·Z·Shift+Z 등
+ * 나머지 편집 단축키는 Chromium/Safari/Electron의 표준 동작을 그대로 쓴다.
+ */
+function enterSaveButton(target) {
+  if (!target || !target.closest) return null;
+
+  if (target.closest('#lockScreen:not(.hidden)')) return $('#btnLockOk');
+
+  const modal = target.closest('.modal-backdrop:not(.hidden)');
+  if (!modal) return null;
+  /* 겹쳐 열린 모달 중 가장 위의 창만 Enter를 받는다. 확인창이 떠 있는데
+     iPhone이 뒤 입력칸의 포커스를 유지해도 가려진 폼은 저장되지 않는다. */
+  const visibleModals = [...document.querySelectorAll('.modal-backdrop:not(.hidden)')];
+  if (modal !== visibleModals[visibleModals.length - 1]) return null;
+  const direct = {
+    entryModal: 'btnSaveEntry',
+    categoryModal: 'btnCategorySave',
+    methodModal: 'btnMethodSave',
+    payModal: 'btnPaySave'
+  }[modal.id];
+  if (direct) return $('#' + direct);
+
+  if (modal.id === 'settingsModal') {
+    /* 설정 안의 작은 편집기는 전체 설정 저장보다 먼저 처리한다. */
+    if (target.closest('.recur-add')) return $('#btnRecAdd');
+    if (target.id === 'methodAdd') return $('#btnMethodAdd');
+    if (target.closest('#lockSetup:not(.hidden)')) return $('#btnLockSave');
+    if (target.closest('#linkSetup:not(.hidden)')) return $('#btnLinkSave');
+    return $('#btnSaveSettings');
+  }
+  return null;
+}
+
+function onEnterSave(ev) {
+  if (ev.key !== 'Enter' || ev.defaultPrevented || ev.repeat) return;
+  /* 조합 중 Enter와 iOS/구형 WebKit의 IME keyCode를 둘 다 막는다. */
+  if (ev.isComposing || ev.keyCode === 229) return;
+  if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.shiftKey) return;
+
+  const target = ev.target;
+  if (!target || !target.matches) return;
+  /* 날짜·시간·선택 컨트롤과 여러 줄 필드의 기본 키 동작은 보존한다. */
+  if (!target.matches('input:not([type]), input[type="text"], input[type="search"], input[type="password"], input[type="email"], input[type="url"], input[type="tel"], input[type="number"]')) return;
+
+  const button = enterSaveButton(target);
+  if (!button || button.disabled || button.classList.contains('hidden')) return;
+  ev.preventDefault();
+  button.click();
+}
+
+function onEditableSelectAll(ev) {
+  if (String(ev.key).toLowerCase() !== 'a' || !(ev.ctrlKey || ev.metaKey)
+      || ev.altKey || ev.shiftKey) return;
+  const target = ev.target;
+  if (!target || !target.matches) return;
+  let selected = false;
+  if (target.matches('input:not([type]), input[type="text"], input[type="search"], input[type="password"], input[type="email"], input[type="url"], input[type="tel"], input[type="number"], textarea')) {
+    try { target.select(); selected = true; } catch (e) { /* 지원하지 않으면 기본 동작에 맡긴다. */ }
+  } else if (target.isContentEditable) {
+    const range = document.createRange();
+    const selection = window.getSelection();
+    range.selectNodeContents(target);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    selected = true;
+  }
+  /* macOS에서 Ctrl+A는 기본적으로 줄 맨 앞 이동이므로, 직접 선택한
+     편집 필드에서만 기본 동작을 막는다. 복사·붙여넣기·실행 취소는 건드리지 않는다. */
+  if (selected) ev.preventDefault();
+}
+
 function bindStatic() {
   $('#btnPrevMonth').addEventListener('click', () => { curMonth = shiftMonth(curMonth, -1); selectedDay = null; render(); });
   $('#btnNextMonth').addEventListener('click', () => { curMonth = shiftMonth(curMonth, 1); selectedDay = null; render(); });
@@ -429,15 +917,25 @@ function bindStatic() {
   });
 
   document.querySelectorAll('[data-close]').forEach((b) =>
-    b.addEventListener('click', () => $('#' + b.dataset.close).classList.add('hidden')));
+    b.addEventListener('click', () => closeModal(b.dataset.close)));
   document.querySelectorAll('.modal-backdrop').forEach((bd) => {
-    bd.addEventListener('mousedown', (ev) => { if (ev.target === bd) bd.classList.add('hidden'); });
+    bd.addEventListener('mousedown', (ev) => { if (ev.target === bd) closeModal(bd.id); });
   });
   document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && categoryDrag) {
+      finishCategoryDrag(true);
+      ev.preventDefault();
+      return;
+    }
     if (ev.key === 'Escape') {
-      ['entryModal', 'settingsModal', 'confirmModal'].forEach((id) => $('#' + id).classList.add('hidden'));
+      /* 겹쳐 열린 확인창과 편집창을 한꺼번에 닫지 않고 맨 위 창만 닫는다. */
+      const visible = [...document.querySelectorAll('.modal-backdrop:not(.hidden)')];
+      const top = visible[visible.length - 1];
+      if (top) closeModal(top.id);
     }
   });
+  document.addEventListener('keydown', onEnterSave);
+  document.addEventListener('keydown', onEditableSelectAll);
 
   /* --- 입력 모달 --- */
   $('#typeSeg').addEventListener('click', (ev) => {
@@ -500,8 +998,6 @@ function bindStatic() {
 
   $('#btnSaveEntry').addEventListener('click', saveEntry);
   $('#btnDeleteEntry').addEventListener('click', deleteEntry);
-  $('#inAmount').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') saveEntry(); });
-  $('#inMemo').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') saveEntry(); });
 
   /* --- 설정 --- */
   $('#btnGenCode').addEventListener('click', () => {
@@ -512,41 +1008,62 @@ function bindStatic() {
   });
   $('#btnSaveSettings').addEventListener('click', () => saveSettings(false));
   $('#btnSyncNow').addEventListener('click', async () => {
-    saveSettings(true);
-    if (!Sync.isConfigured()) { $('#syncInfo').textContent = 'URL·키·내 코드를 모두 넣어주세요.'; return; }
-    $('#syncInfo').textContent = '동기화 중…';
+    if (saveSettings(true) === false) return;
+    if (!Sync.isConfigured()) {
+      $('#syncInfo').textContent = I18n.t('URL·키·내 코드를 모두 넣어주세요.');
+      return;
+    }
+    $('#syncInfo').textContent = I18n.t('동기화 중…');
     await runSync();
     const st = Sync.getStatus();
     $('#syncInfo').textContent = st.state === 'ok'
-      ? '✓ 연결됐어요! 이제 기기끼리 합쳐집니다.'
-      : '⚠ 실패: ' + (st.error || '연결을 확인해주세요');
+      ? I18n.t('✓ 연결됐어요! 이제 기기끼리 합쳐집니다.')
+      : I18n.t('⚠ 실패:') + ' ' + (st.error || I18n.t('연결을 확인해주세요'));
   });
 
   $('#catManage').addEventListener('click', (ev) => {
+    /* 드래그 핸들은 순서 변경전용이다. 핸들에서 끝난 click 이
+       편집·삭제·팁 토글로 전파되지 않게 먼저 멈춘다. */
+    if (ev.target.closest('[data-catdrag]')) return;
     const tipCat = ev.target.closest('[data-tipcat]');
     if (tipCat) {
-      const c = setDraftCats.expense.find((x) => x.name === tipCat.dataset.tipcat);
+      const c = setDraftCats.expense[Number(tipCat.dataset.tipcat)];
       if (c) c.tip = !c.tip;
       renderCatManage(); return;
     }
-    const del = ev.target.closest('[data-del]');
+    const edit = ev.target.closest('[data-catedit]');
+    if (edit) {
+      openCategoryModal(edit.dataset.type, Number(edit.dataset.catedit));
+      return;
+    }
+    const del = ev.target.closest('[data-catdel]');
     if (del) {
-      setDraftCats[del.dataset.type] = setDraftCats[del.dataset.type].filter((c) => c.name !== del.dataset.del);
+      const list = setDraftCats[del.dataset.type];
+      const c = list[Number(del.dataset.catdel)];
+      if (c && REQUIRED_CATEGORY_KEYS.has(c.key)) {
+        toast('저축·고정지출·기타 분류는 삭제할 수 없어요');
+        return;
+      }
+      list.splice(Number(del.dataset.catdel), 1);
       renderCatManage(); return;
     }
     const add = ev.target.closest('[data-add]');
-    if (add) {
-      const input = $('#catAdd-' + add.dataset.add);
-      addCategory(add.dataset.add, input.value);
-      input.value = '';
-    }
+    if (add) openCategoryModal(add.dataset.add);
   });
-  $('#catManage').addEventListener('keydown', (ev) => {
-    const input = ev.target.closest('input[data-addinput]');
-    if (ev.key !== 'Enter' || !input) return;
-    addCategory(input.dataset.addinput, input.value);
-    input.value = '';
+  $('#catManage').addEventListener('pointerdown', beginCategoryDrag);
+  $('#catManage').addEventListener('pointermove', updateCategoryDrag);
+  $('#catManage').addEventListener('pointerup', (ev) => {
+    if (categoryDrag && ev.pointerId === categoryDrag.pointerId) finishCategoryDrag(false);
   });
+  $('#catManage').addEventListener('pointercancel', (ev) => {
+    if (categoryDrag && ev.pointerId === categoryDrag.pointerId) finishCategoryDrag(true);
+  });
+  $('#catManage').addEventListener('lostpointercapture', () => {
+    /* releasePointerCapture() 로 발생한 이벤트는 finish 안에서 이미 정리된다. */
+    if (categoryDrag) finishCategoryDrag(true);
+  });
+  $('#catManage').addEventListener('keydown', onCategoryDragKey);
+  $('#btnCategorySave').addEventListener('click', saveCategoryEditor);
 
   /* --- 결제수단 관리 --- */
   $('#methodManage').addEventListener('click', (ev) => {
@@ -565,7 +1082,6 @@ function bindStatic() {
       $('#inMethodName').value = (m ? m[2] : raw).trim();
     }
   });
-  $('#methodAdd').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') $('#btnMethodAdd').click(); });
   $('#methodTypeSeg').addEventListener('click', (ev) => {
     const b = ev.target.closest('button');
     if (!b) return;
@@ -574,18 +1090,20 @@ function bindStatic() {
   });
   $('#btnMethodSave').addEventListener('click', saveMethod);
   $('#btnMethodDelete').addEventListener('click', deleteMethod);
+  $('#inPreSpentDate').addEventListener('change', renderMethodOpeningHint);
+  $('#inIncludeBeforeStart').addEventListener('change', renderMethodOpeningHint);
   $('#rateGrid').addEventListener('input', (ev) => {
     const el = ev.target.closest('[data-rate]');
     if (el) methodDraftRates[el.dataset.rate] = el.value;
   });
 
-  $('#btnRecAdd').addEventListener('click', addRecurring);
-  $('#recAmount').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') addRecurring(); });
+  $('#btnRecAdd').addEventListener('click', saveRecurringForm);
+  $('#btnRecCancel').addEventListener('click', resetRecurringForm);
   $('#recurList').addEventListener('click', (ev) => {
+    const edit = ev.target.closest('[data-recedit]');
+    if (edit) { beginRecurringEdit(edit.dataset.recedit); return; }
     const del = ev.target.closest('[data-recdel]');
-    if (!del) return;
-    setDraftRecur = setDraftRecur.filter((r) => r.id !== del.dataset.recdel);
-    renderRecurList();
+    if (del) confirmDeleteRecurring(del.dataset.recdel);
   });
 
   $('#btnCsvMonth').addEventListener('click', () => exportCsv(true));
@@ -599,7 +1117,6 @@ function bindStatic() {
 
   /* --- 카드값 갚기 --- */
   $('#btnPaySave').addEventListener('click', savePay);
-  $('#inPayAmount').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') savePay(); });
   $('#payQuick').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-quick]');
     if (b) $('#inPayAmount').value = b.dataset.quick;
@@ -611,68 +1128,190 @@ function bindStatic() {
 
   /* --- 본문 위임 --- */
   $('#view').addEventListener('click', (ev) => {
+    if (ev.target.closest('[data-stat-clear]')) {
+      statsSelectedCategories.clear();
+      renderStats();
+      return;
+    }
+    const statCategory = ev.target.closest('[data-stat-category]');
+    if (statCategory) {
+      const name = statCategory.dataset.statCategory;
+      if (statsSelectedCategories.has(name)) statsSelectedCategories.delete(name);
+      else statsSelectedCategories.add(name);
+      renderStats();
+      return;
+    }
+    const history = ev.target.closest('[data-method-history]');
+    if (history) { openMethodHistory(history.dataset.methodHistory, history); return; }
+    if (ev.target.closest('[data-method-history-back]')) { closeMethodHistory(); return; }
     const pay = ev.target.closest('[data-pay]');
-    if (pay) { openPayModal(pay.dataset.pay); return; }
+    if (pay) { openPayModal(pay.dataset.pay, null, pay); return; }
+    const payedit = ev.target.closest('[data-payedit]');
+    if (payedit) {
+      const e = data.entries.find((x) => x.id === payedit.dataset.payedit && x.type === 'cardpay');
+      if (e) openPayModal(e.method, e.id, payedit);
+      return;
+    }
     const paydel = ev.target.closest('[data-paydel]');
-    if (paydel) { deletePay(paydel.dataset.paydel); return; }
+    if (paydel) { deletePay(paydel.dataset.paydel, paydel); return; }
     if (ev.target.closest('#btnGoMethods')) { openSettings(); return; }
     const row = ev.target.closest('.entry-row');
     if (row && row.dataset.id) {
       const e = data.entries.find((x) => x.id === row.dataset.id);
-      if (e) openEntryModal(e);
+      if (e) openEntryModal(e, row);
       return;
     }
     const cell = ev.target.closest('.cal-cell[data-date]');
     if (cell) { selectedDay = selectedDay === cell.dataset.date ? null : cell.dataset.date; renderView(); }
   });
+  $('#view').addEventListener('keydown', (ev) => {
+    if ((ev.key === 'Enter' || ev.key === ' ')
+        && ev.target.matches('circle[data-stat-category]')) {
+      ev.preventDefault();
+      ev.target.click();
+    }
+  });
   $('#view').addEventListener('input', (ev) => {
-    if (ev.target.id === 'fQ') { filters.q = ev.target.value; renderView(); }
+    /* 검색창을 매 글자마다 새로 만들면 iOS에서 포커스와 한글 IME
+       조합이 끊긴다. 입력창은 그대로 두고 결과 영역만 갱신한다. */
+    if (ev.target.id === 'fQ') { filters.q = ev.target.value; renderListResults(); }
   });
   $('#view').addEventListener('change', (ev) => {
-    if (ev.target.id === 'fCategory') { filters.category = ev.target.value; renderView(); }
+    if (ev.target.id === 'fCategory') { filters.category = ev.target.value; renderListResults(); }
+    if (ev.target.id === 'fMethod') { filters.method = ev.target.value; renderListResults(); }
   });
 }
 
 function askConfirm(opt, cb) {
   $('#confirmEmoji').textContent = opt.emoji || '🗑️';
-  $('#confirmTitle').textContent = opt.title || '';
-  $('#confirmText').innerHTML = opt.text || '';
-  $('#btnConfirmOk').textContent = opt.ok || '확인';
+  $('#confirmTitle').textContent = I18n.t(opt.title || '');
+  $('#confirmText').innerHTML = I18n.t(opt.text || '');
+  $('#btnConfirmOk').textContent = I18n.t(opt.ok || '확인');
   $('#btnConfirmOk').className = 'btn ' + (opt.danger ? 'danger' : 'primary');
   confirmCb = cb;
   $('#confirmModal').classList.remove('hidden');
 }
 
-function addCategory(type, raw) {
-  const val = (raw || '').trim();
-  if (!val) return;
-  const m = val.match(/^(\p{Extended_Pictographic}[️‍\p{Extended_Pictographic}]*)\s*(.+)$/u);
-  const emoji = m ? m[1] : '🏷️';
-  const name = (m ? m[2] : val).trim();
-  if (!name || setDraftCats[type].some((c) => c.name === name)) return;
-  // 가장 적게 쓰인 색부터 배정해 같은 색이 겹치는 걸 최대한 미룬다
+function nextCategorySlot(type) {
   const count = {};
   for (let i = 1; i <= 8; i++) count[i] = 0;
   setDraftCats[type].forEach((c) => { if (c.slot > 0) count[c.slot]++; });
-  const slot = Number(Object.keys(count).sort((a, b) => count[a] - count[b] || a - b)[0]);
-  const cat = { name, emoji, slot };
-  if (type === 'expense') cat.tip = false;
-  setDraftCats[type].push(cat);
+  return Number(Object.keys(count).sort((a, b) => count[a] - count[b] || a - b)[0]);
+}
+
+function openCategoryModal(type, index = null) {
+  const c = index == null ? null : setDraftCats[type][index];
+  editingCategory = { type, index: c ? index : null };
+  $('#categoryModalTitle').textContent = c ? '분류 수정' : '분류 추가';
+  $('#inCategoryKo').value = c ? (c.nameKo || c.name || '') : '';
+  $('#inCategoryEn').value = c ? (c.nameEn || c.name || '') : '';
+  $('#inCategoryEmoji').value = c ? (c.emoji || '') : '🏷️';
+  $('#categoryStableHint').classList.toggle('hidden', !c);
+  $('#categoryModal').classList.remove('hidden');
+  (I18n.lang === 'en' ? $('#inCategoryEn') : $('#inCategoryKo')).focus();
+}
+
+function saveCategoryEditor() {
+  if (!editingCategory) return;
+  const { type, index } = editingCategory;
+  const nameKo = $('#inCategoryKo').value.trim();
+  const nameEn = $('#inCategoryEn').value.trim();
+  const emoji = $('#inCategoryEmoji').value.trim() || '🏷️';
+  if (!nameKo || !nameEn) {
+    toast('한국어 이름과 영어 이름을 모두 넣어주세요');
+    (!nameKo ? $('#inCategoryKo') : $('#inCategoryEn')).focus();
+    return;
+  }
+  const norm = (s) => s.trim().toLocaleLowerCase();
+  const duplicate = setDraftCats[type].some((c, i) => i !== index
+    && ([c.name, c.nameKo, c.nameEn].filter(Boolean).map(norm).includes(norm(nameKo))
+      || [c.name, c.nameKo, c.nameEn].filter(Boolean).map(norm).includes(norm(nameEn))));
+  if (duplicate) { toast('같은 이름의 분류가 이미 있어요'); return; }
+
+  if (index == null) {
+    const cat = { name: nameKo, nameKo, nameEn, emoji, slot: nextCategorySlot(type) };
+    if (type === 'expense') cat.tip = false;
+    setDraftCats[type].push(cat);
+  } else {
+    /* name/slot/tip/key 및 앞으로 추가될 속성까지 그대로 둔 채 표시 이름만 고친다. */
+    Object.assign(setDraftCats[type][index], { nameKo, nameEn, emoji });
+  }
+  editingCategory = null;
+  $('#categoryModal').classList.add('hidden');
   renderCatManage();
 }
 
-function addRecurring() {
-  const day = Math.min(31, Math.max(1, Number($('#recDay').value) || 0));
+function recurringFormHasInput() {
+  return !!($('#recDay').value.trim() || $('#recMemo').value.trim()
+    || $('#recAmount').value.trim() || editingRecurringId);
+}
+
+function saveRecurringForm() {
+  const rawDay = $('#recDay').value.trim();
+  const day = Number(rawDay);
   const memo = $('#recMemo').value.trim();
-  const amount = toNum($('#recAmount').value);
-  if (!day || !memo || !(amount > 0)) { toast('날짜·내용·금액을 모두 넣어주세요'); return; }
-  setDraftRecur.push({
-    id: uuid().slice(0, 8), day, amount, memo,
-    method: $('#recMethod').value || '',      // 어느 카드로 나가는 돈인지
-    category: FIXED_CAT, since: todayStr().slice(0, 7), active: true
-  });
-  $('#recDay').value = ''; $('#recMemo').value = ''; $('#recAmount').value = '';
+  const amount = parseMoneyInput($('#recAmount').value.trim());
+  if (!/^\d{1,2}$/.test(rawDay) || day < 1 || day > 31 || !memo || !(amount > 0)) {
+    toast('날짜·내용·금액을 모두 넣어주세요');
+    if (!/^\d{1,2}$/.test(rawDay) || day < 1 || day > 31) $('#recDay').focus();
+    return false;
+  }
+  const fields = { day, amount, memo, method: $('#recMethod').value || '' };
+  if (editingRecurringId) {
+    const r = setDraftRecur.find((x) => x.id === editingRecurringId);
+    if (!r) { toast('수정할 반복 지출을 찾지 못했어요'); return false; }
+    Object.assign(r, fields);                  // id/since/category/active 는 그대로 보존
+  } else {
+    setDraftRecur.push({
+      id: uuid().slice(0, 8), ...fields,
+      category: categoryKeyFor('fixed', FIXED_CAT), since: todayStr().slice(0, 7), active: true
+    });
+  }
+  resetRecurringForm();
+  return true;
+}
+
+function beginRecurringEdit(id) {
+  if (editingRecurringId === id) return;
+  if (recurringFormHasInput() && saveRecurringForm() === false) return;
+  const r = setDraftRecur.find((x) => x.id === id);
+  if (!r) return;
+  editingRecurringId = id;
+  $('#recDay').value = r.day;
+  $('#recMemo').value = r.memo || '';
+  $('#recAmount').value = formatAmountStr(Number(r.amount) || 0);
+  /* 대상 규칙이 삭제된 결제수단을 가리키는 구데이터여도, 그 값을 잃지 않도록
+     옵션을 대상 규칙 기준으로 처음부터 다시 만든다. */
+  $('#recMethod').innerHTML = '';
   renderRecurList();
+  $('#recMethod').value = r.method || '';
+  $('#btnRecAdd').textContent = '수정 저장';
+  $('#btnRecCancel').classList.remove('hidden');
+  $('#recDay').focus();
+}
+
+function resetRecurringForm(rerender = true) {
+  editingRecurringId = null;
+  $('#recDay').value = '';
+  $('#recMemo').value = '';
+  $('#recAmount').value = '';
+  $('#btnRecAdd').textContent = '추가';
+  $('#btnRecCancel').classList.add('hidden');
+  if (rerender && setDraftRecur) renderRecurList();
+}
+
+function confirmDeleteRecurring(id) {
+  const r = setDraftRecur.find((x) => x.id === id);
+  if (!r) return;
+  askConfirm({
+    emoji: '🗑️', title: '이 반복 설정을 삭제할까요?',
+    text: '이미 자동으로 생성된 내역은 그대로 남고, 앞으로 새 내역만 만들어지지 않아요.',
+    ok: '삭제', danger: true
+  }, () => {
+    setDraftRecur = setDraftRecur.filter((x) => x.id !== id);
+    if (editingRecurringId === id) resetRecurringForm(false);
+    renderRecurList();
+  });
 }
 
 /* ==================== 렌더링 ==================== */
@@ -684,11 +1323,11 @@ function render() {
 
 function renderSummary() {
   const list = monthLedger(curMonth);
-  const income = list.filter((e) => e.type === 'income').reduce((s, e) => s + e.amount, 0);
-  const expense = list.filter((e) => e.type === 'expense').reduce((s, e) => s + e.amount, 0);
+  const income = list.filter((e) => e.type === 'income').reduce((s, e) => s + reportAmount(e), 0);
+  const expense = list.filter((e) => e.type === 'expense').reduce((s, e) => s + reportAmount(e), 0);
   const net = income - expense;
   const prev = monthLedger(shiftMonth(curMonth, -1))
-    .filter((e) => e.type === 'expense').reduce((s, e) => s + e.amount, 0);
+    .filter((e) => e.type === 'expense').reduce((s, e) => s + reportAmount(e), 0);
 
   let delta = '';
   if (prev > 0) {
@@ -735,36 +1374,176 @@ function renderView() {
   if (view === 'list') renderList();
   else if (view === 'calendar') renderCalendar();
   else if (view === 'cards') renderCards();
+  else if (view === 'method') renderMethodHistory();
   else renderStats();
+}
+
+function openMethodHistory(id, sourceEl = null) {
+  if (!id) return;
+  if (view !== 'method') {
+    methodHistoryReturnView = view;
+    const sameLinks = sourceEl
+      ? [...document.querySelectorAll('[data-method-history]')]
+        .filter((el) => el.dataset.methodHistory === id) : [];
+    methodHistoryReturnPosition = {
+      view,
+      month: curMonth,
+      scrollTop: pageScrollTop(),
+      methodId: id,
+      sourceIndex: Math.max(0, sameLinks.indexOf(sourceEl)),
+      sourceTop: sourceEl ? sourceEl.getBoundingClientRect().top : null
+    };
+  }
+  methodHistoryId = id;
+  view = 'method';
+  document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+  renderView();
+  window.scrollTo(0, 0);
+}
+
+function closeMethodHistory() {
+  const saved = methodHistoryReturnPosition;
+  methodHistoryReturnPosition = null;
+  const next = ['list', 'calendar', 'stats', 'cards'].includes(methodHistoryReturnView)
+    ? methodHistoryReturnView : 'cards';
+  view = next;
+  methodHistoryId = null;
+  document.querySelectorAll('.tab').forEach((t) =>
+    t.classList.toggle('active', t.dataset.view === next));
+  renderView();
+  const restore = () => {
+    if (!saved || saved.view !== view || saved.month !== curMonth) return;
+    const links = [...document.querySelectorAll('[data-method-history]')]
+      .filter((el) => el.dataset.methodHistory === saved.methodId);
+    const anchor = links[saved.sourceIndex] || links[0];
+    if (anchor && Number.isFinite(saved.sourceTop)) {
+      window.scrollBy(0, anchor.getBoundingClientRect().top - saved.sourceTop);
+    } else {
+      window.scrollTo(0, saved.scrollTop);
+    }
+  };
+  requestAnimationFrame(() => requestAnimationFrame(restore));
+}
+
+function methodHistoryCountLabel(n) {
+  return I18n.lang === 'en' ? `${n} ${n === 1 ? 'entry' : 'entries'}` : `${n}건`;
+}
+
+function methodHistoryPayRowHtml(e, selectedId) {
+  const isTarget = methodRefMatches(selectedId, e.method);
+  const other = isTarget ? methodLabel(e.from) : methodLabel(e.method);
+  const title = I18n.t(isTarget ? '카드값 갚음' : '카드값 결제');
+  const otherLabel = I18n.t(isTarget ? '출금' : '받는 카드');
+  const editLabel = I18n.t('카드값 기록 수정');
+  const sub = [
+    other ? `${otherLabel} ${other}` : '',
+    e.memo || ''
+  ].filter(Boolean).join(' · ');
+  return `
+    <button class="entry-row cardpay-entry" data-payedit="${esc(e.id)}"
+            title="${esc(editLabel)}" aria-label="${esc(editLabel)}">
+      <span class="entry-emoji cardpay-icon">💳</span>
+      <span class="entry-main">
+        <span class="entry-title"><span class="t">${title}</span></span>
+        <span class="entry-sub">${esc(sub)}</span>
+      </span>
+      <span class="entry-amt ${isTarget ? 'income' : 'expense'}">−${fmtMoney(e.amount)}</span>
+      <span class="entry-edit-mark" aria-hidden="true">✎</span>
+    </button>`;
+}
+
+/* 현재 상단에서 고른 달의 지출·수입·카드값 기록을 결제수단 하나로 모아 본다.
+   카드값은 대상 신용카드와 돈이 빠진 현금/체크카드 양쪽 내역에 모두 나타난다. */
+function renderMethodHistory() {
+  const id = methodHistoryId;
+  if (!id) { closeMethodHistory(); return; }
+  const info = methodHistoryInfo(id);
+  const rows = liveEntries()
+    .filter((e) => e.date && e.date.startsWith(curMonth) && entryMatchesMethod(e, id))
+    .sort((a, b) => b.date.localeCompare(a.date) || byTimeDesc(a, b));
+  const rowAmount = id === METHOD_NONE ? reportAmount : (e) => Number(e.amount) || 0;
+  const expense = rows.filter((e) => e.type === 'expense').reduce((s, e) => s + rowAmount(e), 0);
+  const income = rows.filter((e) => e.type === 'income').reduce((s, e) => s + rowAmount(e), 0);
+  const paidTo = rows.filter((e) => e.type === 'cardpay' && methodRefMatches(id, e.method))
+    .reduce((s, e) => s + e.amount, 0);
+  const paidFrom = rows.filter((e) => e.type === 'cardpay' && methodRefMatches(id, e.from))
+    .reduce((s, e) => s + e.amount, 0);
+  const backLabel = I18n.t(methodHistoryReturnView === 'stats' ? '통계'
+    : (methodHistoryReturnView === 'list' ? '내역' : '잔액'));
+  const infoLabel = info.method ? info.name : I18n.t(info.name);
+
+  const byDay = {};
+  rows.forEach((e) => { (byDay[e.date] = byDay[e.date] || []).push(e); });
+  const listHtml = Object.keys(byDay).sort().reverse().map((d) => {
+    const dt = new Date(d + 'T00:00:00');
+    const es = byDay[d].slice().sort(byTimeDesc);
+    return `
+      <div class="day-group">
+        <div class="day-head">
+          <span class="d">${dt.getMonth() + 1}월 ${dt.getDate()}일</span>
+          <span class="dow">${DOW[dt.getDay()]}요일</span>
+          <span class="tot">${methodHistoryCountLabel(es.length)}</span>
+        </div>
+        <div class="day-card">${es.map((e) => e.type === 'cardpay'
+          ? methodHistoryPayRowHtml(e, id) : entryRowHtml(e, id !== METHOD_NONE)).join('')}</div>
+      </div>`;
+  }).join('');
+
+  const summary = [
+    expense ? `<span><small>지출</small><b class="expense">−${fmtMoney(expense)}</b></span>` : '',
+    income ? `<span><small>수입·환불</small><b class="income">+${fmtMoney(income)}</b></span>` : '',
+    paidTo ? `<span><small>갚음</small><b class="income">−${fmtMoney(paidTo)}</b></span>` : '',
+    paidFrom ? `<span><small>카드값 출금</small><b class="expense">−${fmtMoney(paidFrom)}</b></span>` : ''
+  ].filter(Boolean).join('');
+
+  $('#view').innerHTML = `
+    <div class="method-history-head">
+      <button class="method-history-back" data-method-history-back>‹ ${backLabel}</button>
+      <div class="method-history-title">
+        <h2>${esc(info.emoji)} ${esc(infoLabel)} ${I18n.t('내역')}</h2>
+        <p>${monthLabel(curMonth)} · ${methodHistoryCountLabel(rows.length)}</p>
+      </div>
+    </div>
+    ${summary ? `<div class="method-history-summary">${summary}</div>` : ''}
+    ${rows.length ? listHtml : `
+      <div class="empty"><div class="big-emoji">🧾</div>이 달에는 이 결제수단 내역이 없어요</div>`}`;
 }
 
 /* ---------- 잔액 (가진 돈 · 갚을 돈) ---------- */
 function renderCards() {
   const m = moneySummary();
+  const hasRetiredHistory = liveEntries().some((e) =>
+    (e.method && !methodOf(e.method))
+    || (e.type === 'cardpay' && e.from && !methodOf(e.from)));
 
-  if (!m.assets.length && !m.debts.length) {
+  if (!m.assets.length && !m.debts.length && !cardPays().length && !hasRetiredHistory) {
     $('#view').innerHTML = `
       <div class="empty">
         <div class="big-emoji">💳</div>
         <p>아직 시작 금액을 넣은 결제수단이 없어요.</p>
-        <p class="tiny">설정 → 결제수단에서 <b>시작 금액</b> 을 넣어주세요.<br>
-          신용카드는 <b>갚아야 할 잔액</b>, 현금·체크카드는 <b>지금 들어있는 돈</b> 입니다.</p>
+        <p class="tiny">${I18n.lang === 'en'
+          ? 'Add a <b>starting amount</b> under Settings → Payment methods.<br>Credit cards show what you owe; cash and debit cards show what you hold.'
+          : '설정 → 결제수단에서 <b>시작 금액</b> 을 넣어주세요.<br>신용카드는 <b>갚아야 할 잔액</b>, 현금·체크카드는 <b>지금 들어있는 돈</b> 입니다.'}</p>
         <button class="btn primary" id="btnGoMethods">결제수단 설정 열기</button>
       </div>`;
     return;
   }
 
   const assetHtml = m.assets.map((r) => `
-    <div class="bal-row ${r.left < 0 ? 'minus' : ''}">
+    <button class="bal-row tappable ${r.left < 0 ? 'minus' : ''}"
+            data-method-history="${esc(r.method.id)}" title="결제수단 내역 보기">
       <span class="ic">${r.method.emoji || '💵'}</span>
-      <span class="nm">${esc(r.method.name)}</span>
+      <span class="nm">${esc(r.method.name)}${r.balanceStart
+        ? `<small>${esc(openingLabel(r.balanceStart))}</small>` : ''}</span>
       <span class="amt">${fmtMoney(r.left)}</span>
-    </div>`).join('');
+      <span class="method-history-chevron" aria-hidden="true">›</span>
+    </button>`).join('');
 
   const debtHtml = m.debts.slice().sort((a, b2) => b2.left - a.left).map((r) => {
-    const start = r.opening + r.spent;
-    const pct = start > 0 ? Math.min(100, (r.paid / start) * 100) : 0;
+    const basisTotal = Math.max(0, r.opening + r.spent - r.refunded + r.priorDelta);
+    const pct = basisTotal > 0 ? Math.min(100, (r.paid / basisTotal) * 100) : 0;
     const cleared = r.left === 0;
+    const priorLabel = I18n.lang === 'en' ? 'earlier changes' : '과거 변경';
     return `
       <div class="debt-card ${cleared ? 'cleared' : ''}">
         <div class="debt-top">
@@ -774,10 +1553,12 @@ function renderCards() {
         </div>
         <div class="debt-bar"><div style="width:${pct}%"></div></div>
         <div class="debt-sub">
-          <span>시작 ${fmtMoney(r.opening)}${r.spent ? ` + 이후 사용 ${fmtMoney(r.spent)}` : ''}</span>
+          <span>시작 ${fmtMoney(r.opening)}${r.spent ? ` + 이후 사용 ${fmtMoney(r.spent)}` : ''}${r.refunded ? ` − 수입·환불 ${fmtMoney(r.refunded)}` : ''}${r.priorDelta ? ` ${r.priorDelta > 0 ? '+' : '−'} ${priorLabel} ${fmtMoney(Math.abs(r.priorDelta))}` : ''}</span>
           <span>갚음 ${fmtMoney(r.paid)}</span>
         </div>
+        ${r.balanceStart ? `<div class="balance-basis">${esc(openingLabel(r.balanceStart))}</div>` : ''}
         <div class="debt-actions">
+          <button class="btn small" data-method-history="${esc(r.method.id)}">내역</button>
           <button class="btn small primary" data-pay="${esc(r.method.id)}">갚기</button>
         </div>
       </div>`;
@@ -785,10 +1566,10 @@ function renderCards() {
 
   const donePct = m.owedTotal > 0 ? Math.min(100, (m.paid / m.owedTotal) * 100) : 0;
   const paidThisMonth = cardPays()
-    .filter((e) => e.date && e.date.startsWith(curMonth))
+    .filter((e) => e.date && e.date <= todayStr() && e.date.startsWith(curMonth))
     .reduce((s, e) => s + e.amount, 0);
 
-  const history = cardPays().sort((a, b2) => b2.date.localeCompare(a.date)).slice(0, 12);
+  const history = cardPays().sort((a, b2) => b2.date.localeCompare(a.date));
   const historyHtml = history.length ? `
     <h3 class="sec-title">갚은 기록</h3>
     <div class="pay-log">
@@ -800,6 +1581,7 @@ function renderCards() {
           <span class="dt">${dt.getMonth() + 1}월 ${dt.getDate()}일</span>
           <span class="nm">${esc(methodLabel(e.method) || '카드')}${from}${e.memo ? ` · ${esc(e.memo)}` : ''}</span>
           <span class="amt">${fmtMoney(e.amount)}</span>
+          <button class="edit" data-payedit="${esc(e.id)}" title="카드값 기록 수정" aria-label="카드값 기록 수정">✎</button>
           <button class="del" data-paydel="${esc(e.id)}" title="삭제">✕</button>
         </div>`;
       }).join('')}
@@ -829,78 +1611,94 @@ function renderCards() {
         </div>
         ${paidThisMonth > 0
           ? `<div class="debt-month">이번 달 <b>${fmtMoney(paidThisMonth)}</b> 갚았어요 👏</div>`
-          : '<div class="debt-month tiny">이번 달은 아직 갚은 기록이 없어요</div>'}
+          : `<div class="debt-month tiny">${I18n.lang === 'en'
+            ? 'No card payments this month' : '이번 달은 아직 갚은 기록이 없어요'}</div>`}
       </div>
       <div class="debt-list">${debtHtml}</div>` : ''}
+
+    ${hasRetiredHistory ? `
+      <h3 class="sec-title">${I18n.t('이전 결제수단')}</h3>
+      <div class="bal-list">
+        <button class="bal-row tappable" data-method-history="${METHOD_RETIRED}"
+                title="${I18n.t('결제수단 내역 보기')}">
+          <span class="ic">🗑️</span>
+          <span class="nm">${I18n.t('삭제된 결제수단 내역')}</span>
+          <span class="method-history-chevron" aria-hidden="true">›</span>
+        </button>
+      </div>` : ''}
 
     ${historyHtml}`;
 }
 
 /* ---------- 내역 ---------- */
-function entryRowHtml(e) {
+function entryRowHtml(e, showActual = false) {
   const color = catColorOf(e);
   const sign = e.type === 'income' ? '+' : '−';
-  const title = e.memo || e.category || '(내용 없음)';
-  const sub = [fmtTime(e.time), e.category, methodLabel(e.method),
-    e.tip ? '팁 ' + fmtMoney(e.tip) : null].filter(Boolean).join(' · ');
+  const category = categoryLabel(e.type, e.category);
+  const title = e.memo || category || '(내용 없음)';
+  const personal = reportAmount(e);
+  const shown = showActual || e.reportExcluded ? Number(e.amount) || 0 : personal;
+  let coupleNote = '';
+  if (e.fromCouple && e.coupleTransfer) {
+    coupleNote = I18n.lang === 'en' ? 'Settlement · excluded from spending' : '정산 · 지출 통계 제외';
+  } else if (e.fromCouple && e.coupleSplit === 'half') {
+    const payer = e.couplePayer
+      ? (I18n.lang === 'en' ? `paid by ${e.couplePayer}` : `${e.couplePayer} 결제`) : '';
+    coupleNote = I18n.lang === 'en'
+      ? `My share ${fmtMoney(personal)} · total ${fmtMoney(e.amount)}${payer ? ` · ${payer}` : ''}`
+      : `내 몫 ${fmtMoney(personal)} · 전체 ${fmtMoney(e.amount)}${payer ? ` · ${payer}` : ''}`;
+  }
+  const sub = [fmtTime(e.time), category, methodLabel(e.method), coupleNote,
+    reportTip(e) ? '팁 ' + fmtMoney(reportTip(e)) : null].filter(Boolean).join(' · ');
   return `
-    <button class="entry-row" data-id="${e.id}">
-      <span class="entry-emoji" style="background:${color}22">${catEmojiOf(e)}</span>
+    <button class="entry-row" data-id="${e.id}" title="${I18n.t('눌러서 수정')}" aria-label="${esc(title)} — ${I18n.t('눌러서 수정')}">
+      <span class="entry-emoji" style="background:${color}22">${esc(catEmojiOf(e))}</span>
       <span class="entry-main">
         <span class="entry-title">
           <span class="t">${esc(title)}</span>
           ${e.auto ? '<span class="pill auto">자동</span>' : ''}
           ${e.fromCouple ? '<span class="pill couple">커플</span>' : ''}
+          ${e.coupleTransfer ? '<span class="pill transfer">정산</span>' : ''}
         </span>
         <span class="entry-sub">${esc(sub)}</span>
       </span>
-      <span class="entry-amt ${e.type}">${sign}${fmtMoney(e.amount)}</span>
+      <span class="entry-amt ${e.type}">${sign}${fmtMoney(shown)}</span>
+      <span class="entry-edit-mark" aria-hidden="true">✎</span>
     </button>`;
 }
 
 function applyFilters(list) {
   return list.filter((e) => {
-    if (filters.category && e.category !== filters.category) return false;
+    if (filters.category && canonicalCategory(e.type, e.category) !== filters.category) return false;
+    if (filters.method && !methodRefMatches(filters.method, e.method)) return false;
     if (filters.q) {
-      const q = filters.q.toLowerCase();
       const nm = (methodOf(e.method) || {}).name || '';
-      if (![e.memo, e.category, nm].join(' ').toLowerCase().includes(q)) return false;
+      const c = catOf(e.type, e.category);
+      const catNames = c ? [c.name, c.nameKo, c.nameEn] : [e.category];
+      if (!matchesSearch([e.memo, ...catNames, nm, e.couplePayer].join(' '), filters.q)) return false;
     }
     return true;
   });
 }
 
-function renderList() {
-  const all = monthLedger(curMonth);
+function listResultsHtml(all) {
   const list = applyFilters(all);
-  const cats = [...new Set([...data.settings.categories.expense, ...data.settings.categories.income].map((c) => c.name))];
-
-  const toolbar = `
-    <div class="list-toolbar">
-      <input type="search" id="fQ" placeholder="내용·분류 검색" value="${esc(filters.q)}">
-      <select id="fCategory">
-        <option value="">모든 분류</option>
-        ${cats.map((c) => `<option value="${esc(c)}" ${filters.category === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
-      </select>
-    </div>`;
-
   if (!list.length) {
-    $('#view').innerHTML = toolbar + `
+    return `
       <div class="empty">
         <div class="big-emoji">${all.length ? '🔍' : '🌱'}</div>
         ${all.length ? '조건에 맞는 내역이 없어요'
           : '아직 내역이 없어요.<br>오른쪽 위 <b>＋ 입력</b>으로 시작해보세요!'}
       </div>`;
-    return;
   }
 
   const byDay = {};
   list.forEach((e) => { (byDay[e.date] = byDay[e.date] || []).push(e); });
 
-  const html = Object.keys(byDay).sort().reverse().map((d) => {
+  return Object.keys(byDay).sort().reverse().map((d) => {
     const es = byDay[d].slice().sort(byTimeDesc);   // 같은 날 안에서는 늦은 시각이 위로
-    const inc = es.filter((e) => e.type === 'income').reduce((s, e) => s + e.amount, 0);
-    const exp = es.filter((e) => e.type === 'expense').reduce((s, e) => s + e.amount, 0);
+    const inc = es.filter((e) => e.type === 'income').reduce((s, e) => s + reportAmount(e), 0);
+    const exp = es.filter((e) => e.type === 'expense').reduce((s, e) => s + reportAmount(e), 0);
     const dt = new Date(d + 'T00:00:00');
     const tot = [inc ? '+' + fmtMoney(inc) : '', exp ? '−' + fmtMoney(exp) : ''].filter(Boolean).join('  ');
     return `
@@ -913,8 +1711,44 @@ function renderList() {
         <div class="day-card">${es.map(entryRowHtml).join('')}</div>
       </div>`;
   }).join('');
+}
 
-  $('#view').innerHTML = toolbar + html;
+function renderListResults() {
+  const el = $('#listResults');
+  if (!el || view !== 'list') return;
+  el.innerHTML = listResultsHtml(monthLedger(curMonth));
+}
+
+function renderList() {
+  const all = monthLedger(curMonth);
+  const cats = [...data.settings.categories.expense, ...data.settings.categories.income]
+    .filter((c, i, list) => list.findIndex((x) => x.name === c.name) === i);
+  const hasNoMethod = ledger().some((e) => !e.method);
+  const hasRetiredMethod = ledger().some((e) => e.method && !methodOf(e.method));
+  /* 조회 중이던 카드를 설정에서 지워도 선택칸과 실제 결과가 어긋나지 않게 한다. */
+  if (filters.method === METHOD_NONE && !hasNoMethod) filters.method = '';
+  else if (filters.method === METHOD_RETIRED && !hasRetiredMethod) filters.method = '';
+  else if (filters.method && filters.method !== METHOD_NONE
+      && filters.method !== METHOD_RETIRED && !methodOf(filters.method)) {
+    filters.method = hasRetiredMethod ? METHOD_RETIRED : '';
+  }
+  const toolbar = `
+    <div class="list-toolbar">
+      <input type="search" id="fQ" placeholder="내용·분류·카드·초성 검색" value="${esc(filters.q)}"
+             autocomplete="off" enterkeyhint="search" aria-label="내역 검색">
+      <select id="fCategory" aria-label="분류별 조회">
+        <option value="">모든 분류</option>
+        ${cats.map((c) => `<option value="${esc(c.name)}" ${filters.category === c.name ? 'selected' : ''}>${esc(catLabel(c))}</option>`).join('')}
+      </select>
+      <select id="fMethod" aria-label="결제수단별 조회">
+        <option value="">모든 카드·결제수단</option>
+        ${methods().map((m) => `<option value="${esc(m.id)}" ${filters.method === m.id ? 'selected' : ''}>${esc(m.emoji || '💳')} ${esc(m.name)}</option>`).join('')}
+        ${hasNoMethod ? `<option value="${METHOD_NONE}" ${filters.method === METHOD_NONE ? 'selected' : ''}>결제수단 없음</option>` : ''}
+        ${hasRetiredMethod ? `<option value="${METHOD_RETIRED}" ${filters.method === METHOD_RETIRED ? 'selected' : ''}>삭제된 결제수단</option>` : ''}
+      </select>
+      <div class="entry-edit-hint">✎ 내역을 누르면 수정할 수 있어요</div>
+    </div>`;
+  $('#view').innerHTML = `${toolbar}<div id="listResults">${listResultsHtml(all)}</div>`;
 }
 
 /* ---------- 달력 ---------- */
@@ -927,7 +1761,7 @@ function renderCalendar() {
   const byDay = {};
   monthLedger(curMonth).forEach((e) => {
     const d = byDay[e.date] = byDay[e.date] || { inc: 0, exp: 0 };
-    if (e.type === 'income') d.inc += e.amount; else d.exp += e.amount;
+    if (e.type === 'income') d.inc += reportAmount(e); else d.exp += reportAmount(e);
   });
 
   let cells = DOW.map((d, i) => `<div class="cal-dow ${i === 0 ? 'sun' : ''}">${d}</div>`).join('');
@@ -960,9 +1794,23 @@ function renderCalendar() {
 }
 
 /* ---------- 통계 ---------- */
+function syncStatsSelection(expenses) {
+  if (statsSelectionMonth !== curMonth) {
+    statsSelectionMonth = curMonth;
+    statsSelectedCategories.clear();
+  }
+  const available = new Set(expenses.map((e) =>
+    canonicalCategory('expense', e.category, '기타')));
+  [...statsSelectedCategories].forEach((name) => {
+    if (!available.has(name)) statsSelectedCategories.delete(name);
+  });
+}
+
 function renderStats() {
-  const expenses = monthLedger(curMonth).filter((e) => e.type === 'expense');
+  const expenses = monthLedger(curMonth)
+    .filter((e) => e.type === 'expense' && reportAmount(e) > 0);
   const goalCard = goalCardHtml();
+  syncStatsSelection(expenses);
 
   if (!expenses.length) {
     $('#view').innerHTML = goalCard +
@@ -982,44 +1830,60 @@ function renderStats() {
 
 /* 결제수단별 이번 달 지출. 신용카드는 결제일도 같이 보여준다. */
 function methodCardHtml(expenses) {
-  // 지워진 결제수단으로 기록된 내역도 빠뜨리지 않도록 '없음' 으로 모은다
+  // 지워진 결제수단과 애초에 고르지 않은 내역을 나눠서 둘 다 조회할 수 있게 한다
   const totals = {};
-  let unknown = 0;
+  let noMethod = 0;
+  let retired = 0;
+  let partnerPaid = 0;
   expenses.forEach((e) => {
-    if (methodOf(e.method)) totals[e.method] = (totals[e.method] || 0) + e.amount;
-    else unknown += e.amount;
+    const amount = reportAmount(e);
+    if (methodOf(e.method)) totals[e.method] = (totals[e.method] || 0) + amount;
+    else if (e.method) retired += amount;
+    else {
+      noMethod += amount;
+      if (e.fromCouple && e.coupleSplit === 'half' && e.couplePayer) partnerPaid += amount;
+    }
   });
   const rows = methods()
     .map((m) => ({ m, amt: totals[m.id] || 0 }))
     .filter((r) => r.amt > 0)
     .sort((a, b) => b.amt - a.amt);
-  if (!rows.length && !unknown) return '';
+  if (!rows.length && !noMethod && !retired) return '';
 
-  const max = Math.max(...rows.map((r) => r.amt), unknown, 1);
-  const bar = (label, sub, amt, color) => `
-    <div class="who-row method-row">
+  const max = Math.max(...rows.map((r) => r.amt), noMethod, retired, 1);
+  const bar = (id, label, sub, amt, color) => `
+    <button class="who-row method-row method-history-link" data-method-history="${esc(id)}"
+            title="결제수단 내역 보기">
       <span class="nm">${label}</span>
       <span class="track"><span class="fill" style="display:block;width:${Math.max(2, (amt / max) * 100)}%;background:${color}"></span></span>
       <span class="amt">${fmtMoney(amt)}</span>
-    </div>${sub ? `<p class="hint tiny" style="margin:-6px 0 10px 158px">${sub}</p>` : ''}`;
+      <span class="method-history-chevron" aria-hidden="true">›</span>
+    </button>${sub ? `<p class="hint tiny method-row-sub">${sub}</p>` : ''}`;
 
   let html = rows.map((r, i) => bar(
+    r.m.id,
     `${r.m.emoji || '💳'} ${esc(r.m.name)}`,
     r.m.type === 'credit' && r.m.billingDay ? `매달 ${r.m.billingDay}일 결제 예정` : '',
     r.amt,
     slotColor((i % 8) + 1)
   )).join('');
-  if (unknown > 0) html += bar('결제수단 없음', '', unknown, 'var(--muted)');
+  if (noMethod > 0) html += bar(METHOD_NONE,
+    partnerPaid === noMethod ? '🤝 상대 결제' : '결제수단 없음·상대 결제', '', noMethod, 'var(--muted)');
+  if (retired > 0) html += bar(METHOD_RETIRED, '삭제된 결제수단', '', retired, 'var(--muted)');
 
-  return `<div class="card full"><h3>결제수단별 지출 <small>${monthLabel(curMonth)}</small></h3>${html}</div>`;
+  const coupleHint = expenses.some((e) => e.fromCouple && e.coupleSplit === 'half')
+    ? `<p class="hint tiny method-share-hint">${I18n.lang === 'en'
+      ? 'Shared purchases show my share here; card details keep the full charged amount.'
+      : '함께 쓴 돈은 내 몫만 표시하고, 카드 상세에는 실제 결제 총액을 유지해요.'}</p>` : '';
+  return `<div class="card full"><h3>결제수단별 지출 <small>${monthLabel(curMonth)}</small></h3>${coupleHint}${html}</div>`;
 }
 
 function goalCardHtml() {
   const goal = data.settings.goal || {};
   if (!(goal.target > 0)) return '';
   const saved = liveEntries()
-    .filter((e) => e.type === 'expense' && e.category === SAVE_CAT)
-    .reduce((s, e) => s + e.amount, 0);
+    .filter((e) => e.type === 'expense' && isCategoryKey('expense', e.category, 'savings'))
+    .reduce((s, e) => s + reportAmount(e), 0);
   const pct = Math.min(100, (saved / goal.target) * 100);
   const done = saved >= goal.target;
   return `
@@ -1037,40 +1901,63 @@ function goalCardHtml() {
 }
 
 function donutHtml(expenses) {
-  const total = expenses.reduce((s, e) => s + e.amount, 0);
+  const total = expenses.reduce((s, e) => s + reportAmount(e), 0);
   const byCat = {};
-  expenses.forEach((e) => { const k = e.category || '기타'; byCat[k] = (byCat[k] || 0) + e.amount; });
-  let items = Object.entries(byCat).map(([name, amt]) => {
+  expenses.forEach((e) => {
+    const k = canonicalCategory('expense', e.category, '기타');
+    byCat[k] = (byCat[k] || 0) + reportAmount(e);
+  });
+  const items = Object.entries(byCat).map(([name, amt]) => {
     const c = catOf('expense', name);
-    return { name, amt, slot: c ? c.slot : 0, emoji: c ? c.emoji : '📦' };
+    return { name, label: c ? catLabel(c) : name, amt, slot: c ? c.slot : 0, emoji: c ? c.emoji : '📦' };
   }).sort((a, b) => b.amt - a.amt);
-  if (items.length > 8) {
-    const rest = items.slice(7);
-    items = items.slice(0, 7);
-    items.push({ name: '그 외', amt: rest.reduce((s, x) => s + x.amt, 0), slot: 0, emoji: '📦' });
-  }
+
+  const hasSelection = statsSelectedCategories.size > 0;
+  const selectedTotal = items
+    .filter((it) => statsSelectedCategories.has(it.name))
+    .reduce((sum, it) => sum + it.amt, 0);
 
   const R = 58, C = 2 * Math.PI * R, GAP = 2;
   let off = 0;
   const segs = items.map((it) => {
     const frac = it.amt / total;
     const len = Math.max(0, frac * C - GAP);
-    const s = `<circle r="${R}" cx="80" cy="80" fill="none" stroke="${slotColor(it.slot)}" stroke-width="26"
+    const selected = statsSelectedCategories.has(it.name);
+    const stateClass = selected ? ' selected' : (hasSelection ? ' muted' : '');
+    const s = `<circle class="donut-segment${stateClass}" r="${R}" cx="80" cy="80" fill="none" stroke="${slotColor(it.slot)}" stroke-width="${selected ? 30 : 26}"
       stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}" transform="rotate(-90 80 80)"
-      data-tip="${esc(it.name)}|${fmtMoney(it.amt)} (${Math.round(frac * 100)}%)"></circle>`;
+      data-stat-category="${esc(it.name)}" tabindex="0" role="button"
+      aria-pressed="${selected}" aria-label="${esc(it.label)} ${fmtMoney(it.amt)}"
+      data-tip="${esc(it.label)}|${fmtMoney(it.amt)} (${Math.round(frac * 100)}%)"></circle>`;
     off += frac * C;
     return s;
   }).join('');
 
-  const rank = items.map((it) => `
-    <div class="rank-item">
+  const rank = items.map((it) => {
+    const selected = statsSelectedCategories.has(it.name);
+    const stateClass = selected ? ' selected' : (hasSelection ? ' muted' : '');
+    return `
+    <button type="button" class="rank-item${stateClass}" data-stat-category="${esc(it.name)}"
+            aria-pressed="${selected}">
       <span class="dot" style="background:${slotColor(it.slot)}"></span>
-      <span class="nm">${it.emoji} ${esc(it.name)}</span>
+      <span class="nm">${esc(it.emoji)} ${esc(it.label)}</span>
       <span class="pct">${Math.round((it.amt / total) * 100)}%</span>
       <span class="amt">${fmtMoney(it.amt)}</span>
-    </div>`).join('');
+    </button>`;
+  }).join('');
 
-  const tipTotal = expenses.reduce((s, e) => s + (e.tip || 0), 0);
+  const selectionNote = hasSelection
+    ? `<div class="stats-selection-summary">
+         <span><b>${I18n.lang === 'en'
+           ? `${statsSelectedCategories.size} ${statsSelectedCategories.size === 1 ? 'category' : 'categories'} selected`
+           : `${statsSelectedCategories.size}개 분류 선택`}</b> · ${I18n.lang === 'en' ? 'Total' : '합계'} <strong>${fmtMoney(selectedTotal)}</strong></span>
+         <button type="button" data-stat-clear>${I18n.lang === 'en' ? 'Clear selection' : '선택 해제'}</button>
+       </div>`
+    : `<p class="stats-selection-hint">${I18n.lang === 'en'
+      ? 'Select multiple categories to see their combined total'
+      : '분류를 여러 개 눌러 합계를 볼 수 있어요'}</p>`;
+
+  const tipTotal = expenses.reduce((s, e) => s + reportTip(e), 0);
   const tipNote = tipTotal > 0
     ? `<p class="hint tiny" style="margin-top:14px">💵 이 중 팁이 <b>${fmtMoney(tipTotal)}</b> 예요 (전체 지출의 ${((tipTotal / total) * 100).toFixed(1)}%)</p>`
     : '';
@@ -1078,17 +1965,19 @@ function donutHtml(expenses) {
   return `
     <svg viewBox="0 0 160 160" width="160" height="160" style="flex:none">
       ${segs}
-      <text x="80" y="74" text-anchor="middle" class="donut-center-lbl">이번 달</text>
-      <text x="80" y="94" text-anchor="middle" class="donut-center-val">${fmtMoney(total)}</text>
+      <text x="80" y="74" text-anchor="middle" class="donut-center-lbl">${hasSelection
+        ? (I18n.lang === 'en' ? 'Selected total' : '선택 합계')
+        : (I18n.lang === 'en' ? 'This month' : '이번 달')}</text>
+      <text x="80" y="94" text-anchor="middle" class="donut-center-val">${fmtMoney(hasSelection ? selectedTotal : total)}</text>
     </svg>
-    <div class="rank-list">${rank}${tipNote}</div>`;
+    <div class="rank-list">${selectionNote}${rank}${tipNote}</div>`;
 }
 
 function dailyBarsHtml(expenses) {
   const [y, mo] = curMonth.split('-').map(Number);
   const dim = daysInMonth(curMonth);
   const byDay = new Array(dim + 1).fill(0);
-  expenses.forEach((e) => { byDay[Number(e.date.slice(8, 10))] += e.amount; });
+  expenses.forEach((e) => { byDay[Number(e.date.slice(8, 10))] += reportAmount(e); });
   const max = Math.max(...byDay, 1);
 
   const W = 680, H = 170, mL = 52, mR = 8, mT = 12, mB = 22;
@@ -1105,8 +1994,11 @@ function dailyBarsHtml(expenses) {
       bars += `<rect x="${(x - barW / 2).toFixed(1)}" y="${(mT + plotH - h).toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="${bar}"></rect>`;
     }
     const dt = new Date(y, mo - 1, d);
+    const dayTip = I18n.lang === 'en'
+      ? `${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(dt)} (${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dt.getDay()]})`
+      : `${mo}월 ${d}일 (${DOW[dt.getDay()]})`;
     hits += `<rect x="${(x - slotW / 2).toFixed(1)}" y="${mT}" width="${slotW.toFixed(1)}" height="${plotH}" fill="transparent"
-      data-tip="${mo}월 ${d}일 (${DOW[dt.getDay()]})|${v > 0 ? '−' + fmtMoney(v) : '지출 없음'}"></rect>`;
+      data-tip="${dayTip}|${v > 0 ? '−' + fmtMoney(v) : I18n.t('지출 없음')}"></rect>`;
     if (d === 1 || d % 5 === 0) labels += `<text x="${x.toFixed(1)}" y="${H - 6}" text-anchor="middle" class="axis-lbl">${d}</text>`;
   }
   const grid = [0.5, 1].map((f) => {
@@ -1144,23 +2036,31 @@ function renderSyncStatus(st) {
   const el = $('#syncStatus');
   el.className = 'sync-status ' + st.state;
   const dot = '<span class="dot"></span>';
-  if (st.state === 'off') { el.innerHTML = dot + '동기화 꺼짐'; el.title = '눌러서 기기 동기화 설정하기'; }
+  if (st.state === 'off') {
+    el.innerHTML = dot + I18n.t('동기화 꺼짐');
+    el.title = I18n.t('눌러서 기기 동기화 설정하기');
+  }
   else if (st.state === 'syncing') { el.innerHTML = dot + '동기화 중…'; }
   else if (st.state === 'ok') {
     const t = st.lastSyncAt;
     el.innerHTML = dot + pad2(t.getHours()) + ':' + pad2(t.getMinutes()) + ' 동기화됨';
-    el.title = '눌러서 지금 동기화';
-  } else if (st.state === 'offline') { el.innerHTML = dot + '오프라인'; el.title = '연결되면 자동으로 합쳐져요'; }
-  else if (st.state === 'error') { el.innerHTML = dot + '동기화 오류'; el.title = st.error || ''; }
+    el.title = I18n.t('눌러서 지금 동기화');
+  } else if (st.state === 'offline') {
+    el.innerHTML = dot + I18n.t('오프라인');
+    el.title = I18n.t('연결되면 자동으로 합쳐져요');
+  }
+  else if (st.state === 'error') { el.innerHTML = dot + I18n.t('동기화 오류'); el.title = st.error || ''; }
   else { el.innerHTML = dot + '대기 중'; }
 }
 
 /* ==================== 입력 모달 ==================== */
-function openEntryModal(entry) {
+function openEntryModal(entry, sourceEl = null) {
+  rememberViewScroll('entryModal', sourceEl);
   editingId = entry ? entry.id : null;
   const firstCat = data.settings.categories.expense[0].name;
   draft = entry
-    ? { type: entry.type, amount: entry.amount, category: entry.category, date: entry.date,
+    ? { type: entry.type, amount: entry.amount,
+        category: canonicalCategory(entry.type, entry.category, firstCat), date: entry.date,
         time: entry.time || '', memo: entry.memo,
         /* 저장된 건 총액(amount)과 팁뿐이라, 식사비는 빼서 되돌린다 */
         base: roundMoney(entry.amount - (entry.tip || 0)),
@@ -1171,8 +2071,10 @@ function openEntryModal(entry) {
         // 새로 넣는 건 지금 시각을 채워둔다 (지우면 시간 없이 저장된다)
         time: selectedDay && selectedDay !== todayStr() ? '' : nowTime(),
         memo: '', base: 0, tip: 0, tipMode: 'none' };
-  // 저장된 결제수단이 지워졌으면 마지막에 쓰던 것으로
-  draft.method = (entry && methodOf(entry.method)) ? entry.method : data.settings.lastMethod;
+  // 지워진 결제수단도 편집 저장 때 조용히 다른 카드로 바뀌지 않게 원래 값을 보존한다.
+  const fallbackMethod = methodOf(data.settings.lastMethod)
+    ? data.settings.lastMethod : ((methods()[0] || {}).id || '');
+  draft.method = entry ? (entry.method || '') : fallbackMethod;
   renderEntryModal();
   $('#entryModal').classList.remove('hidden');
   $('#inAmount').focus();
@@ -1185,17 +2087,18 @@ function renderEntryModal() {
     b.className = on ? 'active ' + (isExp ? 'expense-on' : 'income-on') : '';
   });
 
-  $('#amountUnit').textContent = isUSD() ? '$' : '원';
+  $('#amountUnit').textContent = isUSD() ? '$' : (I18n.lang === 'en' ? '₩' : '원');
   $('#inAmount').value = draft.base ? formatAmountStr(draft.base) : '';
   $('#inDate').value = draft.date;
   $('#inTime').value = draft.time || '';
   $('#inMemo').value = draft.memo || '';
-  $('#inMemo').placeholder = isExp ? '어디에 썼는지 적어주세요' : '어떤 수입인지 적어주세요';
+  $('#inMemo').placeholder = I18n.t(isExp ? '어디에 썼는지 적어주세요' : '어떤 수입인지 적어주세요');
   $('#btnDeleteEntry').classList.toggle('hidden', !editingId);
+  $('#btnSaveEntry').textContent = I18n.t(editingId ? '수정 저장' : '저장');
 
   $('#catGrid').innerHTML = data.settings.categories[draft.type].map((c) => `
     <button class="cat-chip ${c.name === draft.category ? 'active' : ''}" data-name="${esc(c.name)}">
-      <span>${c.emoji}</span>${esc(c.name)}
+      <span>${esc(c.emoji)}</span>${esc(catLabel(c))}
     </button>`).join('');
 
   renderTipBox();
@@ -1204,10 +2107,12 @@ function renderEntryModal() {
 
 /* 결제수단 칩 + 이 분류에 제일 좋은 카드 추천 */
 function renderMethodPicker() {
+  const missing = draft.method && !methodOf(draft.method);
   $('#methodGrid').innerHTML = methods().map((m) => `
     <button class="cat-chip method ${m.id === draft.method ? 'active' : ''}" data-method="${esc(m.id)}">
       <span>${m.emoji || '💳'}</span>${esc(m.name)}
-    </button>`).join('');
+    </button>`).join('') + (missing
+      ? '<button class="cat-chip method active missing" type="button" disabled><span>?</span>지워진 결제수단</button>' : '');
 
   const hint = $('#methodHint');
   if (draft.type !== 'expense') { hint.textContent = ''; return; }
@@ -1270,6 +2175,7 @@ function renderTipBox() {
 function captureDraft() {
   draft.base = readAmount();
   draft.date = $('#inDate').value || draft.date;
+  draft.time = $('#inTime').value || '';
   draft.memo = $('#inMemo').value;
   recalcTip();
 }
@@ -1318,9 +2224,23 @@ function toNum(s) {
   const n = Number(String(s).replace(/[^0-9.]/g, ''));
   return isFinite(n) ? n : 0;
 }
+
+/* 저장용 금액은 표시 통화의 자릿수까지 엄격히 검사한다.
+   빈 값과 잘못된 값이 조용히 0원/$0 기준점으로 바뀌면 잔액을 맞출 수 없다. */
+function parseMoneyInput(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  const re = isUSD()
+    ? /^(?:(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?|\.\d{1,2})$/
+    : /^(?:\d+|\d{1,3}(?:,\d{3})+)$/;
+  if (!re.test(s)) return null;
+  const n = Number(s.replace(/,/g, ''));
+  return Number.isFinite(n) && n >= 0 ? roundMoney(n) : null;
+}
 function readAmount() { return toNum($('#inAmount').value); }
 
 function saveEntry() {
+  const wasEditing = !!editingId;
   draft.base = readAmount();
   recalcTip();
   if (!(draft.amount > 0)) { $('#inAmount').focus(); toast('금액을 넣어주세요'); return; }
@@ -1334,18 +2254,25 @@ function saveEntry() {
     time: $('#inTime').value || '',
     memo: $('#inMemo').value.trim()
   };
-  data.settings.lastMethod = draft.method || data.settings.lastMethod;
+  if (methodOf(draft.method)) data.settings.lastMethod = draft.method;
   if (editingId) {
     const e = data.entries.find((x) => x.id === editingId);
-    if (e) { Object.assign(e, f); touch(e); }
+    if (e) {
+      Object.assign(e, f);
+      detachCoupleCopy(e);
+      touch(e);
+    }
   } else {
     const e = { id: uuid(), ...f, deleted: false };
     touch(e);
     data.entries.push(e);
   }
   $('#entryModal').classList.add('hidden');
-  curMonth = f.date.slice(0, 7);
+  /* 새 내역을 다른 달에 추가할 때만 그 달로 이동한다. 기존 내역의 날짜를
+     고쳐도 사용자가 보던 달·탭·검색조건은 그대로 남겨둔다. */
+  if (!wasEditing) curMonth = f.date.slice(0, 7);
   afterChange();
+  restoreViewScroll('entryModal');
 }
 
 function deleteEntry() {
@@ -1354,9 +2281,11 @@ function deleteEntry() {
   if (!e) return;
   askConfirm({ emoji: '🗑️', title: '이 내역을 삭제할까요?', text: '되돌릴 수 없어요.', ok: '삭제', danger: true }, () => {
     e.deleted = true;
+    if (e.fromCouple) e.linkDetached = true;
     touch(e);
     $('#entryModal').classList.add('hidden');
     afterChange();
+    restoreViewScroll('entryModal');
   });
 }
 
@@ -1375,6 +2304,7 @@ function openSettings() {
   setDraftCats = JSON.parse(JSON.stringify(s.categories));
   setDraftRecur = JSON.parse(JSON.stringify(s.recurring || []));
   setDraftMethods = JSON.parse(JSON.stringify(s.methods || []));
+  resetRecurringForm(false);
   renderMethodManage();
   renderCatManage();
   renderRecurList();
@@ -1392,23 +2322,29 @@ let editingMethodId = null;
 function renderMethodManage() {
   const monthTotals = {};
   monthLedger(curMonth).filter((e) => e.type === 'expense')
-    .forEach((e) => { monthTotals[e.method] = (monthTotals[e.method] || 0) + e.amount; });
+    .forEach((e) => { monthTotals[e.method] = (monthTotals[e.method] || 0) + reportAmount(e); });
 
   $('#methodManage').innerHTML = setDraftMethods.map((m) => {
     const kind = m.type === 'credit' ? '신용' : (m.type === 'debit' ? '체크' : '현금');
     const rates = Object.entries(m.rates || {}).filter(([, v]) => Number(v) > 0);
+    const start = methodOpening(m);
+    const balance = isCreditM(m) ? cardDebt(m) : cashLeft(m);
     const sub = [
-      rates.length ? rates.map(([k, v]) => `${k} ${v}%`).slice(0, 2).join(' · ') : '',
+      rates.length ? rates.map(([k, v]) => `${draftCategoryLabel('expense', k)} ${v}%`).slice(0, 2).join(' · ') : '',
       m.base > 0 ? `그 외 ${m.base}%` : '',
       m.billingDay ? `${m.billingDay}일 결제` : '',
-      m.opening > 0 ? `시작 ${fmtMoney(m.opening)}` : ''
+      monthTotals[m.id] ? (I18n.lang === 'en'
+        ? `This month spent ${fmtMoney(monthTotals[m.id])}`
+        : `이번 달 지출 ${fmtMoney(monthTotals[m.id])}`) : '',
+      start ? openingLabel(start) : ''
     ].filter(Boolean).join(' · ');
     return `
       <div class="method-item" data-medit="${esc(m.id)}">
         <span class="ic">${m.emoji || '💳'}</span>
         <span class="nm">${esc(m.name)}${sub ? `<span class="sub">${esc(sub)}</span>` : ''}</span>
         <span class="kind ${m.type}">${kind}</span>
-        <span class="amt">${monthTotals[m.id] ? fmtMoney(monthTotals[m.id]) : ''}</span>
+        <span class="amt">${balance
+          ? `<small>${isCreditM(m) ? '갚을 돈' : '현재 잔액'}</small>${fmtMoney(balance.left)}` : ''}</span>
         ${m.id === 'cash' ? '' :
           `<button class="del" data-mdel="${esc(m.id)}" title="삭제">✕</button>`}
       </div>`;
@@ -1424,8 +2360,11 @@ function openMethodModal(id) {
   $('#inMethodMemo').value = m ? (m.memo || '') : '';
   $('#inBillingDay').value = m ? (m.billingDay || '') : '';
   $('#inRateBase').value = m && m.base ? m.base : '';
-  $('#inPreSpent').value = m && m.opening ? m.opening : '';
-  $('#inPreSpentDate').value = (m && m.openingDate) || todayStr();
+  const start = methodOpening(m);
+  $('#inPreSpent').value = start ? formatAmountStr(start.amount) : '';
+  $('#inPreSpentDate').value = start ? start.date : todayStr();
+  $('#inPreSpentDate').max = todayStr();
+  $('#inIncludeBeforeStart').checked = !!(start && start.before === 'include');
   $('#btnMethodDelete').classList.toggle('hidden', !m || m.id === 'cash');
   methodDraftType = m ? m.type : 'credit';
   methodDraftRates = m ? { ...(m.rates || {}) } : {};
@@ -1437,6 +2376,12 @@ function openMethodModal(id) {
 let methodDraftType = 'credit';
 let methodDraftRates = {};
 
+function methodDraftRate(c) {
+  const key = [c.name, c.nameKo, c.nameEn]
+    .find((k) => k && methodDraftRates[k] != null && methodDraftRates[k] !== '');
+  return key ? methodDraftRates[key] : '';
+}
+
 function renderMethodModal() {
   document.querySelectorAll('#methodTypeSeg button').forEach((b) =>
     b.classList.toggle('active', b.dataset.mtype === methodDraftType));
@@ -1447,20 +2392,37 @@ function renderMethodModal() {
      지출이 아니라 결제수단에 붙는 값이라, 다시 저장해도 중복될 일이 없다. */
   $('#preSpentLabel').textContent = isCredit
     ? '시작 금액 — 지금 갚아야 할 잔액' : '시작 금액 — 지금 남아있는 돈';
-  $('#preSpentHint').innerHTML = (isCredit
-    ? '청구서에 찍힌 <b>현재 잔액</b> 과 그 기준 날짜를 넣어주세요. ' +
-      '이번 달 지출에는 잡히지 않고 <b>잔액</b> 탭에서 갚아나가는 금액으로만 보입니다.'
-    : '통장·지갑에 <b>지금 들어있는 돈</b> 과 그 기준 날짜를 넣어주세요. ' +
-      '<b>잔액</b> 탭에서 쓸수록 줄어드는 게 보여요.'
-  ) + ' 기준 날짜 <b>다음날부터</b> 입력한 내역이 반영됩니다.';
+  renderMethodOpeningHint();
 
-  $('#rateGrid').innerHTML = data.settings.categories.expense.map((c) => `
+  $('#rateGrid').innerHTML = (setDraftCats || data.settings.categories).expense.map((c) => `
     <span class="rate-cell">
-      ${c.emoji} ${esc(c.name)}
+      ${esc(c.emoji)} ${esc(catLabel(c))}
       <input data-rate="${esc(c.name)}" inputmode="decimal" maxlength="5"
-             value="${methodDraftRates[c.name] != null ? esc(methodDraftRates[c.name]) : ''}" placeholder="–">
+             value="${esc(methodDraftRate(c))}" placeholder="–">
       <span class="pc">%</span>
     </span>`).join('');
+}
+
+function renderMethodOpeningHint() {
+  const date = $('#inPreSpentDate').value || todayStr();
+  const include = $('#inIncludeBeforeStart').checked;
+  const current = editingMethodId
+    ? setDraftMethods.find((m) => m.id === editingMethodId) : null;
+  const canKeepBaseline = !!(current && current.openingSet === true
+    && current.openingDate === date && current.type === methodDraftType
+    && hasOpeningBaseline(current));
+  const pending = include && !canKeepBaseline
+    && Sync.isConfigured() && Sync.getStatus().state !== 'ok';
+  const meaning = I18n.t(methodDraftType === 'credit'
+    ? '이 날짜가 끝난 시점의 갚아야 할 잔액을 넣어주세요.'
+    : '이 날짜가 끝난 시점의 사용 가능 잔액을 넣어주세요.');
+  const history = I18n.t(pending
+    ? '동기화가 끝나면 기준일까지의 현재 내역을 기준으로 잡고, 그 뒤 과거 변경분을 반영해요.'
+    : include
+      ? '기준점을 저장한 뒤 기준일까지 추가·수정·삭제한 내역의 차이도 잔액에 반영돼요.'
+    : '기준일 다음날부터의 내역만 잔액에 반영돼요.');
+  const basis = I18n.lang === 'en' ? `${date} end-of-day basis` : `${date} 하루 마감 기준`;
+  $('#preSpentHint').textContent = `${basis} · ${meaning} ${history}`;
 }
 
 function saveMethod() {
@@ -1471,6 +2433,7 @@ function saveMethod() {
     const v = toNum(el.value);
     if (v > 0) rates[el.dataset.rate] = v;
   });
+  const methodId = editingMethodId || ('m_' + uuid().slice(0, 8));
   const fields = {
     name,
     emoji: $('#inMethodEmoji').value.trim() || '💳',
@@ -1483,22 +2446,52 @@ function saveMethod() {
 
   /* 시작 금액은 지출로 넣지 않고 카드에 붙여둔다.
      지난 달들에 쓴 돈이라, 이번 달 지출·예산에 섞이면 숫자가 엉망이 되기 때문이다. */
-  fields.opening = toNum($('#inPreSpent').value);
-  fields.openingDate = fields.opening > 0 ? ($('#inPreSpentDate').value || todayStr()) : '';
+  const openingRaw = $('#inPreSpent').value.trim();
+  if (openingRaw === '') {
+    fields.openingSet = false;
+    fields.opening = 0;
+    fields.openingDate = '';
+    fields.openingBefore = 'exclude';
+    fields.openingBaseline = 0;
+  } else {
+    const opening = parseMoneyInput(openingRaw);
+    if (opening == null) {
+      $('#inPreSpent').focus(); toast('시작 금액을 올바르게 넣어주세요'); return;
+    }
+    const openingDate = $('#inPreSpentDate').value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(openingDate || '') || openingDate > todayStr()) {
+      $('#inPreSpentDate').focus(); toast('잔액 기준일을 골라주세요'); return;
+    }
+    fields.openingSet = true;
+    fields.opening = opening;
+    fields.openingDate = openingDate;
+    fields.openingBefore = $('#inIncludeBeforeStart').checked ? 'include' : 'exclude';
+    const old = editingMethodId ? setDraftMethods.find((x) => x.id === editingMethodId) : null;
+    const canKeepBaseline = !!(old && old.openingSet === true
+      && old.openingDate === openingDate && old.type === methodDraftType
+      && hasOpeningBaseline(old));
+    fields.openingBaseline = canKeepBaseline
+      ? Number(old.openingBaseline)
+      /* 새 범위는 바깥 설정 저장에서 최종 동기화 상태를 적용한 뒤 확정한다.
+         같은 설정 세션에서 동기화를 처음 켜도 로컬 과거 합계를 먼저 잡지 않는다. */
+      : null;
+  }
 
   if (editingMethodId) {
     const m = setDraftMethods.find((x) => x.id === editingMethodId);
     if (m) Object.assign(m, fields);
   } else {
-    setDraftMethods.push({ id: 'm_' + uuid().slice(0, 8), ...fields });
+    setDraftMethods.push({ id: methodId, ...fields });
   }
   $('#methodModal').classList.add('hidden');
   renderMethodManage();
+  renderRecurList();
 }
 
 /* ---------- 카드값 갚기 ---------- */
 let payingMethodId = null;
 let payFromId = null;
+let editingPayId = null;
 
 /* 카드값을 낼 수 있는 곳 = 현금·체크카드 */
 function payableFrom() { return methods().filter((m) => !isCreditM(m)); }
@@ -1514,22 +2507,36 @@ function renderPayFrom() {
   }).join('');
 }
 
-function openPayModal(id) {
-  const m = methodOf(id);
-  if (!m) return;
-  const d = cardDebt(m) || { left: 0 };
-  payingMethodId = id;
+function openPayModal(id, entryId = null, sourceEl = null) {
+  const existing = entryId
+    ? data.entries.find((x) => x.id === entryId && x.type === 'cardpay') : null;
+  const m = methodOf(existing ? existing.method : id);
+  if (!m && !existing) return;
+  rememberViewScroll('payModal', sourceEl);
+  editingPayId = existing ? existing.id : null;
+  payingMethodId = existing ? existing.method : id;
+  const d = m ? (cardDebt(m) || { left: 0 }) : { left: 0 };
   const from = payableFrom();
-  payFromId = (from.find((x) => x.id === data.settings.lastPayFrom) || from[0] || {}).id || null;
-  $('#payModalTitle').textContent = `${m.emoji || '💳'} ${m.name} 갚기`;
-  $('#inPayAmount').value = '';
-  $('#inPayDate').value = todayStr();
-  $('#inPayMemo').value = '';
+  payFromId = existing
+    ? (existing.from || '')
+    : ((from.find((x) => x.id === data.settings.lastPayFrom) || from[0] || {}).id || null);
+  const label = m ? `${m.emoji || '💳'} ${m.name}` : '카드';
+  $('#payModalTitle').textContent = I18n.lang === 'en'
+    ? (existing ? `Edit ${label} payment` : `Pay ${label}`)
+    : (existing ? `${label} 갚은 기록 수정` : `${label} 갚기`);
+  $('#inPayAmount').value = existing ? formatAmountStr(existing.amount) : '';
+  $('#inPayDate').value = existing ? existing.date : todayStr();
+  $('#inPayDate').max = todayStr();
+  $('#inPayMemo').value = existing ? (existing.memo || '') : '';
+  $('#btnPaySave').textContent = existing ? '수정 저장' : '저장';
   renderPayFrom();
   /* 자주 쓰는 금액을 눌러 넣을 수 있게 — 전액이 제일 위 */
-  $('#payQuick').innerHTML = d.left > 0
-    ? `<button type="button" data-quick="${d.left}">전액 ${fmtMoney(d.left)}</button>` +
-      [100, 200, 500].filter((v) => v < d.left)
+  const existingIncluded = !!(existing && m && balanceEntryFilter(m)(existing));
+  const fullAmount = roundMoney(Math.max(0,
+    (Number.isFinite(d.rawLeft) ? d.rawLeft : d.left) + (existingIncluded ? existing.amount : 0)));
+  $('#payQuick').innerHTML = fullAmount > 0
+    ? `<button type="button" data-quick="${fullAmount}">${I18n.lang === 'en' ? 'Full' : '전액'} ${fmtMoney(fullAmount)}</button>` +
+      [100, 200, 500].filter((v) => v < fullAmount)
         .map((v) => `<button type="button" data-quick="${v}">${fmtMoney(v)}</button>`).join('')
     : '';
   $('#payModal').classList.remove('hidden');
@@ -1537,81 +2544,292 @@ function openPayModal(id) {
 }
 
 function savePay() {
-  const amount = toNum($('#inPayAmount').value);
-  if (!(amount > 0)) { $('#inPayAmount').focus(); toast('금액을 넣어주세요'); return; }
-  const e = {
-    id: uuid(), date: $('#inPayDate').value || todayStr(),
+  const amount = parseMoneyInput($('#inPayAmount').value.trim());
+  if (!(amount > 0)) { $('#inPayAmount').focus(); toast('금액을 올바르게 넣어주세요'); return; }
+  const payDate = $('#inPayDate').value || todayStr();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(payDate) || payDate > todayStr()) {
+    $('#inPayDate').focus(); toast('오늘 또는 이전 날짜를 골라주세요'); return;
+  }
+  const fields = {
+    date: payDate,
     type: 'cardpay', amount, tip: 0, category: '',
     method: payingMethodId,          // 갚은 대상 카드
     from: payFromId || '',           // 돈이 빠져나간 곳 (현금·체크카드)
-    memo: $('#inPayMemo').value.trim(),
-    deleted: false
+    memo: $('#inPayMemo').value.trim()
   };
+  const card = methodOf(payingMethodId);
+  const existing = editingPayId
+    ? data.entries.find((x) => x.id === editingPayId && x.type === 'cardpay') : null;
+  const debt = card ? cardDebt(card) : null;
+  if (debt && balanceEntryFilter(card)(fields)) {
+    const oldIncluded = !!(existing && balanceEntryFilter(card)(existing));
+    const maxPayable = roundMoney(Math.max(0,
+      (Number.isFinite(debt.rawLeft) ? debt.rawLeft : debt.left)
+      + (oldIncluded ? existing.amount : 0)));
+    if (amount > maxPayable) {
+      $('#inPayAmount').focus();
+      toast(I18n.lang === 'en'
+        ? `Enter no more than the current balance of ${fmtMoney(maxPayable)}`
+        : `현재 갚을 돈 ${fmtMoney(maxPayable)} 이하로 넣어주세요`);
+      return;
+    }
+  }
   if (payFromId) data.settings.lastPayFrom = payFromId;
-  touch(e);
-  data.entries.push(e);
+  if (editingPayId) {
+    const e = data.entries.find((x) => x.id === editingPayId && x.type === 'cardpay');
+    if (e) { Object.assign(e, fields); touch(e); }
+  } else {
+    const e = { id: uuid(), ...fields, deleted: false };
+    touch(e);
+    data.entries.push(e);
+  }
+  const wasEditing = !!editingPayId;
+  editingPayId = null;
   $('#payModal').classList.add('hidden');
   afterChange();
+  restoreViewScroll('payModal');
   const m = methodOf(payingMethodId);
   const left = m ? (cardDebt(m) || {}).left : null;
-  toast(left === 0 ? '다 갚았어요! 🎉' : `${fmtMoney(amount)} 갚았어요`);
+  toast(wasEditing ? '카드값 기록을 수정했어요'
+    : (left === 0 ? '다 갚았어요! 🎉'
+      : (I18n.lang === 'en' ? `Paid ${fmtMoney(amount)}` : `${fmtMoney(amount)} 갚았어요`)));
 }
 
-function deletePay(id) {
+function deletePay(id, sourceEl = null) {
   const e = data.entries.find((x) => x.id === id);
   if (!e) return;
+  rememberViewScroll('confirmModal', sourceEl);
   askConfirm({
     emoji: '🗑️',
     title: '이 갚은 기록을 지울까요?',
-    text: `${fmtMoney(e.amount)} 기록이 사라지고, 갚을 돈이 그만큼 다시 늘어나요.`,
+    text: I18n.lang === 'en'
+      ? `The ${fmtMoney(e.amount)} payment will be removed and that amount will be added back to what you owe.`
+      : `${fmtMoney(e.amount)} 기록이 사라지고, 갚을 돈이 그만큼 다시 늘어나요.`,
     ok: '삭제', danger: true
   }, () => {
     e.deleted = true;
     touch(e);
     afterChange();
+    restoreViewScroll('confirmModal');
   });
 }
 
 function deleteMethodById(id) {
   const m = setDraftMethods.find((x) => x.id === id);
   if (!m) return;
-  const used = liveEntries().filter((e) => e.method === id).length;
+  const used = liveEntries().filter((e) => e.method === id || e.from === id).length;
+  const recurUsed = setDraftRecur.filter((r) => r.method === id).length;
   askConfirm({
     emoji: '🗑️',
-    title: `${m.name} 을(를) 삭제할까요?`,
-    text: used
-      ? `이 결제수단으로 기록된 내역 <b>${used}건</b> 은 그대로 남고, 결제수단 표시만 사라집니다.`
-      : '설정에서 [저장] 을 눌러야 최종 반영돼요.',
+    title: I18n.lang === 'en' ? `Delete ${m.name}?` : `${m.name} 을(를) 삭제할까요?`,
+    text: I18n.lang === 'en'
+      ? (used || recurUsed
+        ? `<b>${used}</b> linked ${used === 1 ? 'entry stays' : 'entries stay'}.${recurUsed
+          ? ` <b>${recurUsed}</b> recurring ${recurUsed === 1 ? 'expense changes' : 'expenses change'} to no payment method.` : ''}`
+        : 'Select Save in Settings to apply this change.')
+      : (used || recurUsed
+        ? `연결된 내역 <b>${used}건</b> 은 그대로 남습니다.${recurUsed
+          ? ` 반복 지출 <b>${recurUsed}건</b> 은 결제수단 없음으로 바뀝니다.` : ''}`
+        : '설정에서 [저장] 을 눌러야 최종 반영돼요.'),
     ok: '삭제', danger: true
   }, () => {
     setDraftMethods = setDraftMethods.filter((x) => x.id !== id);
+    setDraftRecur.forEach((r) => { if (r.method === id) r.method = ''; });
     $('#methodModal').classList.add('hidden');
     renderMethodManage();
+    renderRecurList();
   });
 }
 function deleteMethod() { deleteMethodById(editingMethodId); }
+
+function moveDraftCategory(type, from, to) {
+  const list = setDraftCats && setDraftCats[type];
+  if (!list || from < 0 || from >= list.length || to < 0 || to >= list.length || from === to) return false;
+  const [item] = list.splice(from, 1);
+  list.splice(to, 0, item);
+  return true;
+}
+
+function announceCategoryOrder(type, index) {
+  const status = $('#catOrderStatus');
+  const list = setDraftCats && setDraftCats[type];
+  const c = list && list[index];
+  if (!status || !c) return;
+  status.textContent = I18n.lang === 'en'
+    ? `${catLabel(c)} moved to position ${index + 1} of ${list.length}.`
+    : `${catLabel(c)} 분류를 ${list.length}개 중 ${index + 1}번째로 옮겼어요.`;
+}
+
+function focusCategoryHandle(type, index) {
+  requestAnimationFrame(() => {
+    const handle = document.querySelector(`[data-catdrag="${type}"][data-catindex="${index}"]`);
+    if (handle) handle.focus();
+    announceCategoryOrder(type, index);
+  });
+}
+
+function onCategoryDragKey(ev) {
+  const handle = ev.target.closest('[data-catdrag]');
+  if (!handle || !setDraftCats) return;
+  const type = handle.dataset.catdrag;
+  const list = setDraftCats[type];
+  const from = Number(handle.dataset.catindex);
+  let to = from;
+  if (ev.key === 'ArrowUp' || ev.key === 'ArrowLeft') to = Math.max(0, from - 1);
+  else if (ev.key === 'ArrowDown' || ev.key === 'ArrowRight') to = Math.min(list.length - 1, from + 1);
+  else if (ev.key === 'Home') to = 0;
+  else if (ev.key === 'End') to = list.length - 1;
+  else return;
+  ev.preventDefault();
+  if (!moveDraftCategory(type, from, to)) return;
+  renderCatManage();
+  focusCategoryHandle(type, to);
+}
+
+function beginCategoryDrag(ev) {
+  const handle = ev.target.closest('[data-catdrag]');
+  if (categoryDrag || !handle || !setDraftCats || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+  const type = handle.dataset.catdrag;
+  const index = Number(handle.dataset.catindex);
+  const chip = handle.closest('.cat-manage-chip');
+  if (!chip || !setDraftCats[type] || !setDraftCats[type][index]) return;
+  handle.focus({ preventScroll: true });
+  ev.preventDefault();
+  /* 핸들이 아닌 고정된 컨테이너에 pointer capture 를 건다. 드래그 중
+     칩의 DOM 위치를 옮겨도 iOS/Safari 가 capture 를 풀지 않게 하기 위함이다. */
+  const captureEl = $('#catManage');
+  try { captureEl.setPointerCapture(ev.pointerId); } catch (_) { /* 구형 WebView 폴백 */ }
+  categoryDrag = {
+    pointerId: ev.pointerId,
+    type,
+    startIndex: index,
+    currentIndex: index,
+    original: setDraftCats[type].slice(),
+    chip,
+    handle,
+    captureEl,
+    listEl: chip.parentElement,
+    startX: ev.clientX,
+    startY: ev.clientY,
+    offsetX: 0,
+    offsetY: 0,
+    ghost: null,
+    started: false
+  };
+}
+
+function startCategoryDrag(ev) {
+  const d = categoryDrag;
+  if (!d || d.started) return;
+  const rect = d.chip.getBoundingClientRect();
+  d.started = true;
+  d.offsetX = Math.max(0, Math.min(rect.width, ev.clientX - rect.left));
+  d.offsetY = Math.max(0, Math.min(rect.height, ev.clientY - rect.top));
+  d.ghost = d.chip.cloneNode(true);
+  d.ghost.classList.add('cat-drag-ghost');
+  d.ghost.classList.remove('is-dragging');
+  d.ghost.setAttribute('aria-hidden', 'true');
+  d.ghost.querySelectorAll('button').forEach((b) => { b.tabIndex = -1; });
+  Object.assign(d.ghost.style, { width: `${rect.width}px`, height: `${rect.height}px` });
+  document.body.appendChild(d.ghost);
+  d.chip.classList.add('is-dragging');
+  document.body.classList.add('category-reordering');
+}
+
+function categoryDropIndex(d, x, y) {
+  const siblings = [...d.listEl.querySelectorAll(`.cat-manage-chip[data-cat-type="${d.type}"]`)]
+    .filter((el) => el !== d.chip);
+  if (!siblings.length) return 0;
+  let nearest = siblings[0];
+  let best = Infinity;
+  siblings.forEach((el) => {
+    const r = el.getBoundingClientRect();
+    const dx = x - (r.left + r.width / 2);
+    const dy = y - (r.top + r.height / 2);
+    const score = dx * dx + dy * dy;
+    if (score < best) { best = score; nearest = el; }
+  });
+  const r = nearest.getBoundingClientRect();
+  /* 같은 줄에서는 좌우, 다른 줄에서는 상하 위치로 앞/뒤를 판단한다. */
+  const sameRow = y >= r.top && y <= r.bottom;
+  const after = sameRow ? x > r.left + r.width / 2 : y > r.top + r.height / 2;
+  return siblings.indexOf(nearest) + (after ? 1 : 0);
+}
+
+function autoScrollCategorySettings(y) {
+  const box = categoryDrag && categoryDrag.chip.closest('.settings-body');
+  if (!box) return;
+  const r = box.getBoundingClientRect();
+  const edge = 48;
+  if (y < r.top + edge) box.scrollBy(0, -10);
+  else if (y > r.bottom - edge) box.scrollBy(0, 10);
+}
+
+function updateCategoryDrag(ev) {
+  const d = categoryDrag;
+  if (!d || ev.pointerId !== d.pointerId) return;
+  if (!d.started && Math.hypot(ev.clientX - d.startX, ev.clientY - d.startY) < 5) return;
+  startCategoryDrag(ev);
+  if (!d.started) return;
+  ev.preventDefault();
+  d.ghost.style.left = `${ev.clientX - d.offsetX}px`;
+  d.ghost.style.top = `${ev.clientY - d.offsetY}px`;
+  autoScrollCategorySettings(ev.clientY);
+
+  const to = categoryDropIndex(d, ev.clientX, ev.clientY);
+  if (to === d.currentIndex || !moveDraftCategory(d.type, d.currentIndex, to)) return;
+  const siblings = [...d.listEl.querySelectorAll(`.cat-manage-chip[data-cat-type="${d.type}"]`)]
+    .filter((el) => el !== d.chip);
+  d.listEl.insertBefore(d.chip, siblings[to] || null);
+  d.currentIndex = to;
+}
+
+function finishCategoryDrag(cancelled) {
+  const d = categoryDrag;
+  if (!d) return;
+  categoryDrag = null;
+  if (cancelled && d.started) setDraftCats[d.type] = d.original;
+  if (d.ghost) d.ghost.remove();
+  d.chip.classList.remove('is-dragging');
+  document.body.classList.remove('category-reordering');
+  try {
+    if (d.captureEl.hasPointerCapture && d.captureEl.hasPointerCapture(d.pointerId)) {
+      d.captureEl.releasePointerCapture(d.pointerId);
+    }
+  } catch (_) { /* 구형 WebView 폴백 */ }
+  if (!d.started) return;
+  const index = cancelled ? d.startIndex : d.currentIndex;
+  renderCatManage();
+  focusCategoryHandle(d.type, index);
+}
 
 function renderCatManage() {
   const block = (type, label, hint) => `
     <div class="field">
       <label>${label}</label>
       ${hint ? `<p class="hint tiny" style="margin:-2px 0 8px">${hint}</p>` : ''}
-      <div class="cat-manage-list">
-        ${setDraftCats[type].map((c) => `
-          <span class="cat-manage-chip">
+      <div class="cat-manage-list" role="list" aria-label="${label}">
+        ${setDraftCats[type].map((c, i) => `
+          <span class="cat-manage-chip" data-cat-type="${type}" data-cat-index="${i}" role="listitem">
+            <button type="button" class="cat-drag-handle" data-catdrag="${type}" data-catindex="${i}"
+              title="${I18n.t('순서 변경')}" aria-label="${esc(catLabel(c))} — ${I18n.t('순서 변경')}"
+              aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Home End">⠿</button>
             <span style="width:8px;height:8px;border-radius:3px;background:${slotColor(c.slot)};display:inline-block"></span>
-            ${c.emoji} ${esc(c.name)}
+            ${esc(c.emoji)} <span class="cat-manage-name">${esc(catLabel(c))}</span>
             ${type === 'expense' ? `<button class="tip-btn ${c.tip ? 'on' : 'off'}"
-                data-tipcat="${esc(c.name)}" title="팁 계산 켜기/끄기">팁</button>` : ''}
-            <button class="del" data-del="${esc(c.name)}" data-type="${type}" title="삭제">✕</button>
+                data-tipcat="${i}" title="팁 계산 켜기/끄기">팁</button>` : ''}
+            <button class="edit" data-catedit="${i}" data-type="${type}" title="${I18n.t('분류 수정')}" aria-label="${esc(catLabel(c))} — ${I18n.t('분류 수정')}">✎</button>
+            ${REQUIRED_CATEGORY_KEYS.has(c.key) ? ''
+              : `<button class="del" data-catdel="${i}" data-type="${type}" title="삭제">✕</button>`}
           </span>`).join('')}
       </div>
       <div class="cat-add-row">
-        <input id="catAdd-${type}" data-addinput="${type}" placeholder="예: 🐶 반려동물 (이모지 생략 가능)">
-        <button class="btn" data-add="${type}">추가</button>
+        <button class="btn" data-add="${type}">＋ ${label} 추가</button>
       </div>
     </div>`;
   $('#catManage').innerHTML =
+    '<p class="hint tiny cat-order-hint">핸들을 끌어 분류 순서를 바꿀 수 있어요. 키보드에서는 핸들에 초점을 맞추고 방향키를 누르세요.</p>' +
+    '<span class="sr-only" id="catOrderStatus" aria-live="polite" aria-atomic="true"></span>' +
     block('expense', '지출 분류', '<b>팁</b> 을 눌러 켜두면 그 분류에서 팁 계산기가 나와요.') +
     block('income', '수입 분류', '');
 }
@@ -1621,10 +2839,17 @@ function renderRecurList() {
   const list = setDraftMethods && setDraftMethods.length ? setDraftMethods : methods();
   const sel = $('#recMethod');
   if (sel) {
-    const keep = sel.value;
+    const hadOptions = sel.options.length > 0;
+    const previous = sel.value;
+    const editingRule = editingRecurringId
+      ? setDraftRecur.find((r) => r.id === editingRecurringId) : null;
+    const keep = hadOptions ? previous : (editingRule ? (editingRule.method || '') : '');
+    const missing = !!(editingRule && keep && !list.some((m) => m.id === keep)
+      && keep === (editingRule.method || ''));
     sel.innerHTML = '<option value="">결제수단 없음</option>' + list.map((m) =>
-      `<option value="${esc(m.id)}">${m.emoji || '💳'} ${esc(m.name)}</option>`).join('');
-    sel.value = list.some((m) => m.id === keep) ? keep : (data.settings.lastMethod || '');
+      `<option value="${esc(m.id)}">${m.emoji || '💳'} ${esc(m.name)}</option>`).join('') +
+      (missing ? `<option value="${esc(keep)}">? 지워진 결제수단</option>` : '');
+    sel.value = (keep === '' || list.some((m) => m.id === keep) || missing) ? keep : '';
   }
 
   if (!setDraftRecur.length) {
@@ -1634,16 +2859,19 @@ function renderRecurList() {
   $('#recurList').innerHTML = setDraftRecur.map((r) => {
     const m = list.find((x) => x.id === r.method);
     return `
-    <div class="recur-item">
+    <div class="recur-item ${editingRecurringId === r.id ? 'editing' : ''}">
       <span class="day">매달 ${r.day}일</span>
       <span class="nm">${esc(r.memo)}${m ? `<span class="rec-method">${m.emoji || '💳'} ${esc(m.name)}</span>` : ''}</span>
       <span class="amt">${fmtMoney(r.amount)}</span>
-      <button data-recdel="${r.id}" title="삭제">✕</button>
+      <button class="edit" data-recedit="${r.id}" title="${I18n.t('반복 지출 수정')}" aria-label="${esc(r.memo)} — ${I18n.t('반복 지출 수정')}">✎</button>
+      <button class="del" data-recdel="${r.id}" title="${I18n.t('삭제')}" aria-label="${esc(r.memo)} — ${I18n.t('삭제')}">✕</button>
     </div>`;
   }).join('');
 }
 
 function saveSettings(keepOpen) {
+  /* 반복 입력칸을 편집하다가 바로 설정 저장을 눌러도 값이 사라지지 않게 한다. */
+  if (recurringFormHasInput() && saveRecurringForm() === false) return false;
   const s = data.settings;
   const newCurrency = $('#setCurrency').value;
   const newBudget = toNum($('#setBudget').value);
@@ -1687,19 +2915,33 @@ function saveSettings(keepOpen) {
   s.recurring = setDraftRecur;
   s.methods = newMethods;
   if (!methodOf(s.lastMethod)) s.lastMethod = s.methods[0].id;
-  setDraftMethods = JSON.parse(JSON.stringify(s.methods));
   setDraftCats = JSON.parse(JSON.stringify(setDraftCats));
   setDraftRecur = JSON.parse(JSON.stringify(setDraftRecur));
-  if (changedFields.length) markMeta(...changedFields);
-  if (langChanged) I18n.setLang(newLang, userWords, stockNames());
+  const metaChanged = changedFields.length > 0;
+  if (metaChanged) markMeta(...changedFields);
+  if (langChanged) {
+    I18n.setLang(newLang, userWords, stockNames());
+    checkDesktopUpdate();
+  }
+  const pushLocaleChanged = Push.refreshMetadata('나');
 
-  const prev = [s.supabaseUrl, s.supabaseKey, s.coupleCode].join('|');
+  const oldLedgerUrl = Sync.normalizeUrl(s.supabaseUrl);
+  const oldLedgerKey = (s.supabaseKey || '').trim().replace(/\s+/g, '');
+  const oldLedgerCode = (s.coupleCode || '').trim();
+  const wasConfigured = !!(oldLedgerUrl && oldLedgerKey && oldLedgerCode);
+  const prev = [oldLedgerUrl, oldLedgerKey, oldLedgerCode].join('|');
   // 붙여넣을 때 /rest/v1 같은 경로가 같이 들어오면 잘라낸다 (안 자르면 동기화가 404 로 실패)
   s.supabaseUrl = Sync.normalizeUrl($('#setSupaUrl').value);
   s.supabaseKey = $('#setSupaKey').value.trim().replace(/\s+/g, '');
   s.coupleCode = $('#setCoupleCode').value.trim();
   $('#setSupaUrl').value = s.supabaseUrl;
   const cfgChanged = prev !== [s.supabaseUrl, s.supabaseKey, s.coupleCode].join('|');
+  const nowConfigured = !!(s.supabaseUrl && s.supabaseKey && s.coupleCode);
+  const ledgerChanged = nowConfigured && (!wasConfigured
+    || oldLedgerUrl !== s.supabaseUrl || oldLedgerCode !== s.coupleCode);
+  /* 원장 정체성 변경만으로 methods 수정 시각을 새로 만들지는 않는다.
+     그래야 첫 pull 에서 원격의 더 최신 결제수단 설정이 정상적으로 이긴다. */
+  if (ledgerChanged) invalidateOpeningBaselines();
   if (cfgChanged) {
     s.lastPullAt = null;
     data.entries.forEach((e) => { e.dirty = true; });
@@ -1707,11 +2949,22 @@ function saveSettings(keepOpen) {
   }
 
   applyRecurring();
+
+  /* 동기화가 켜져 있으면 마지막 상태가 ok 여도 이번 저장 뒤 다른 기기 변경을
+     한 번 더 받아야 한다. 동기화를 끈 경우에만 로컬 원장으로 즉시 확정한다. */
+  const canCaptureOpeningBaseline = !Sync.isConfigured();
+  const openingBaselineMigrated = canCaptureOpeningBaseline
+    ? migrateOpeningBaselines() : false;
+  if (openingBaselineMigrated) markMeta('methods');
+  setDraftMethods = JSON.parse(JSON.stringify(s.methods));
+
   // 동기화 설정은 절대 날아가면 안 되므로 지연 없이 바로 저장
   Store.saveNow(data);
   if (keepOpen !== true) $('#settingsModal').classList.add('hidden');
   render();
-  if (Sync.isConfigured() && (cfgChanged || metaChanged)) scheduleSync();
+  if (Sync.isConfigured()
+      && (cfgChanged || metaChanged || openingBaselineMigrated || pushLocaleChanged)) scheduleSync();
+  return true;
 }
 
 /* ==================== CSV ==================== */
@@ -1721,12 +2974,25 @@ function exportCsv(monthOnly) {
     ? cardPays().filter((e) => e.date && e.date.startsWith(curMonth)) : cardPays();
   const list = (monthOnly ? monthLedger(curMonth) : ledger()).concat(pays)
     .slice().sort((a, b) => a.date.localeCompare(b.date));
-  const label = { income: '수입', cardpay: '카드갚기' };
-  const rows = [['날짜', '시간', '구분', '금액', '팁', '분류', '결제수단', '내용']];
-  list.forEach((e) => rows.push([
-    e.date, e.time || '', label[e.type] || '지출', e.amount, e.tip || 0, e.category,
-    (methodOf(e.method) || {}).name || '', e.memo
-  ]));
+  const en = I18n.lang === 'en';
+  const label = en
+    ? { expense: 'Expense', income: 'Income', cardpay: 'Card payment' }
+    : { expense: '지출', income: '수입', cardpay: '카드갚기' };
+  const rows = [en
+    ? ['Date', 'Time', 'Type', 'Actual amount', 'Monthly spending amount', 'Tip',
+      'Category', 'Payment method', 'Note', 'Couple-ledger source']
+    : ['날짜', '시간', '구분', '실제 결제액', '월지출 반영액', '팁',
+      '분류', '결제수단', '내용', '커플 원본']];
+  list.forEach((e) => {
+    const method = methodOf(e.method);
+    rows.push([
+      e.date, e.time || '', label[e.type] || label.expense, e.amount,
+      e.type === 'cardpay' ? 0 : reportAmount(e), e.type === 'cardpay' ? 0 : reportTip(e),
+      categoryLabel(e.type, e.category),
+      method ? (method.id === 'cash' ? I18n.t(method.name) : method.name) : '',
+      e.memo, e.fromCouple ? (en ? 'Yes' : '예') : ''
+    ]);
+  });
   const csv = '﻿' + rows.map((r) => r.map((v) => {
     const s = String(v ?? '');
     return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
@@ -1734,7 +3000,9 @@ function exportCsv(monthOnly) {
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = monthOnly ? `내가계부_${curMonth}.csv` : '내가계부_전체.csv';
+  a.download = en
+    ? (monthOnly ? `my-ledger_${curMonth}.csv` : 'my-ledger_all.csv')
+    : (monthOnly ? `내가계부_${curMonth}.csv` : '내가계부_전체.csv');
   a.click();
   URL.revokeObjectURL(a.href);
   toast('CSV 파일을 저장했어요');
@@ -1751,7 +3019,7 @@ const UPDATE_BASE = CFG.updateBase || '';
 let swWaiting = null;
 
 function showUpdateBar(title, sub, onClick) {
-  $('#updateTxt').innerHTML = esc(title) + (sub ? `<small>${esc(sub)}</small>` : '');
+  $('#updateTxt').innerHTML = esc(I18n.t(title)) + (sub ? `<small>${esc(I18n.t(sub))}</small>` : '');
   $('#updateBar').classList.remove('hidden');
   $('#btnUpdateNow').onclick = onClick;
 }
@@ -1767,7 +3035,7 @@ function setupServiceWorker() {
     const offer = (worker) => {
       swWaiting = worker;
       showUpdateBar('새 버전이 준비됐어요', '누르면 바로 최신 화면으로 바뀝니다', () => {
-        $('#btnUpdateNow').textContent = '적용 중…';
+        $('#btnUpdateNow').textContent = I18n.t('적용 중…');
         swWaiting.postMessage({ type: 'SKIP_WAITING' });
       });
     };
@@ -1823,7 +3091,13 @@ async function checkDesktopUpdate() {
     const info = await res.json();
     if (cmpVersion(info.version, mine) <= 0) return;
     const url = (info.downloads && info.downloads[platformKey()]) || info.downloadPage || UPDATE_BASE;
-    showUpdateBar(`새 버전 ${info.version} 이 나왔어요`, info.notes || '', () => {
+    const title = I18n.lang === 'en'
+      ? `Version ${info.version} is available`
+      : `새 버전 ${info.version} 이 나왔어요`;
+    const notes = I18n.lang === 'en'
+      ? (info.notesEn || info.notes_en || info.notes || '')
+      : (info.notesKo || info.notes_ko || info.notes || '');
+    showUpdateBar(title, notes, () => {
       window.open(url, '_blank');
       $('#updateBar').classList.add('hidden');
       toast('받은 파일을 실행하면 업데이트됩니다');
@@ -1887,7 +3161,6 @@ const Lock = (function () {
 
   /* --- 지문·얼굴 --- */
   const isDesktop = () => !!(window.mygagyebu && window.mygagyebu.platform);
-  const isIOS = () => /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   async function bioKind() {
     if (isDesktop()) {
@@ -1907,8 +3180,8 @@ const Lock = (function () {
     const cred = await navigator.credentials.create({
       publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)),
-        rp: { name: '내 가계부' },
-        user: { id: crypto.getRandomValues(new Uint8Array(16)), name: '내 가계부', displayName: '내 가계부' },
+        rp: { name: I18n.t('내 가계부') },
+        user: { id: crypto.getRandomValues(new Uint8Array(16)), name: I18n.t('내 가계부'), displayName: I18n.t('내 가계부') },
         pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
         authenticatorSelection: {
           authenticatorAttachment: 'platform',
@@ -1925,7 +3198,11 @@ const Lock = (function () {
     await navigator.credentials.get({
       publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)),
-        allowCredentials: credId ? [{ type: 'public-key', id: unb64(credId) }] : [],
+        /* 이 잠금은 이 아이폰의 Face ID용이므로 다른 기기/보안키 선택 화면으로
+           새지 않도록 내장 인증기만 힌트로 준다. Safari가 모르는 힌트는 무시한다. */
+        allowCredentials: credId
+          ? [{ type: 'public-key', id: unb64(credId), transports: ['internal'] }]
+          : [],
         userVerification: 'required',
         timeout: 60000
       }
@@ -1934,15 +3211,22 @@ const Lock = (function () {
   }
 
   let lastBioErr = '';
+  let bioBusy = false;
   async function tryBio() {
     const L = cfg();
-    if (!L || !L.bio) return false;
+    if (!L || !L.bio || bioBusy) return false;
     lastBioErr = '';
+    bioBusy = true;
+    const btn = $('#btnLockBio');
+    if (btn) btn.disabled = true;
     try {
-      if (L.bio === 'touchid') return await window.mygagyebu.bioPrompt('내 가계부 잠금 해제');
+      if (L.bio === 'touchid') return await window.mygagyebu.bioPrompt(I18n.t('내 가계부 잠금 해제'));
       if (L.bio === 'webauthn') return await webauthnVerify(L.credId);
     } catch (e) {
       lastBioErr = e && e.name === 'NotAllowedError' ? '' : (e && e.message) || '';
+    } finally {
+      bioBusy = false;
+      if (btn) btn.disabled = false;
     }
     return false;
   }
@@ -1958,7 +3242,7 @@ const Lock = (function () {
     const hasBio = !!(L && L.bio);
     const btn = $('#btnLockBio');
     btn.classList.toggle('hidden', !hasBio);
-    btn.textContent = L && L.bio === 'touchid' ? '👆 Touch ID 로 열기' : '👤 Face ID 로 열기';
+    btn.textContent = I18n.t(L && L.bio === 'touchid' ? '👆 Touch ID 로 열기' : '👤 Face ID 로 열기');
     /* 지문·얼굴을 쓰면 그 버튼을 먼저 보여주고, 비밀번호는 아래로 내린다 */
     btn.classList.toggle('primary', hasBio);
     $('#btnLockOk').classList.toggle('primary', !hasBio);
@@ -1975,7 +3259,7 @@ const Lock = (function () {
     const pw = $('#lockPw').value;
     if (!pw) return;
     if (await verify(pw)) { hide(); return; }
-    $('#lockError').textContent = '비밀번호가 맞지 않아요';
+    $('#lockError').textContent = I18n.t('비밀번호가 맞지 않아요');
     $('#lockPw').value = '';
     $('#lockPw').focus();
   }
@@ -1985,9 +3269,10 @@ const Lock = (function () {
     if (!isOn()) { unlocked = true; return; }
     show();
     const L = cfg();
-    /* 맥 Touch ID 는 앱이 열릴 때 바로 물어봐도 된다.
-       아이폰 Face ID 는 사용자가 화면을 눌러야만 뜨므로 버튼을 누르게 둔다. */
-    if (L && L.bio && !isIOS()) {
+    /* 아이폰도 앱에 들어오자마자 Face ID를 한 번 시도한다. 최신 Safari는
+       첫 WebAuthn 요청을 사용자 탭 없이 제시할 수 있다. 브라우저가 막거나
+       사용자가 취소하면 잠금 화면과 기존 버튼을 그대로 남겨 재시도하게 한다. */
+    if (L && L.bio) {
       if (await tryBio()) { hide(); return; }
     }
     // 지문·얼굴을 쓰는 경우엔 키보드를 먼저 올리지 않는다 (버튼이 가려져서)
@@ -2017,10 +3302,10 @@ async function renderLockSetting() {
   const L = Lock.cfg();
   const on = !!(L && L.on);
   $('#lockStateText').textContent = on
-    ? (L.bio ? '잠금 켜짐 · 비밀번호 + ' + (L.bio === 'touchid' ? 'Touch ID' : 'Face ID·지문')
-             : '잠금 켜짐 · 비밀번호')
-    : '잠금 꺼짐';
-  $('#btnLockToggle').textContent = on ? '끄기' : '켜기';
+    ? (L.bio ? I18n.t('잠금 켜짐 · 비밀번호 +') + ' ' + (L.bio === 'touchid' ? 'Touch ID' : I18n.t('Face ID·지문'))
+             : I18n.t('잠금 켜짐 · 비밀번호'))
+    : I18n.t('잠금 꺼짐');
+  $('#btnLockToggle').textContent = I18n.t(on ? '끄기' : '켜기');
   $('#btnLockToggle').classList.toggle('danger', on);
 
   lockBioKind = await Lock.bioKind();
@@ -2057,7 +3342,7 @@ async function saveLockSetting() {
   if ($('#setLockBio').checked && lockBioKind) {
     try {
       if (lockBioKind === 'touchid') {
-        if (await window.mygagyebu.bioPrompt('내 가계부 잠금에 Touch ID 를 등록합니다')) bio = 'touchid';
+        if (await window.mygagyebu.bioPrompt(I18n.t('내 가계부 잠금에 Touch ID 를 등록합니다'))) bio = 'touchid';
         else bioErr = 'Touch ID 를 취소하셨어요';
       } else {
         credId = await Lock.webauthnRegister();
@@ -2099,7 +3384,6 @@ async function toggleLock() {
 
 function bindLock() {
   $('#btnLockOk').addEventListener('click', () => Lock.submit());
-  $('#lockPw').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') Lock.submit(); });
   $('#btnLockBio').addEventListener('click', async () => {
     if (await Lock.tryBio()) { Lock.hide(); return; }
     const why = Lock.bioError();
@@ -2110,7 +3394,6 @@ function bindLock() {
   $('#btnLockToggle').addEventListener('click', toggleLock);
   $('#btnLockCancel').addEventListener('click', () => $('#lockSetup').classList.add('hidden'));
   $('#btnLockSave').addEventListener('click', saveLockSetting);
-  $('#setLockPw2').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') saveLockSetting(); });
   Lock.watchAway();
 }
 
@@ -2132,21 +3415,27 @@ function trackKeyboard() {
   document.addEventListener('focusin', (ev) => {
     const el = ev.target;
     if (!el.matches || !el.matches('input, select, textarea')) return;
-    if (!el.closest('.modal')) return;
+    const modal = el.closest('.modal');
+    if (!modal) return;
     // 키보드가 다 올라온 뒤에 옮겨야 자리가 맞는다
     setTimeout(() => {
-      try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { /* 무시 */ }
+      if (!el.isConnected || document.activeElement !== el
+          || !modal.closest('.modal-backdrop:not(.hidden)')) return;
+      const scroller = el.closest('.settings-body') || modal;
+      const er = el.getBoundingClientRect();
+      const sr = scroller.getBoundingClientRect();
+      const top = sr.top + 16;
+      const bottom = Math.min(sr.bottom, window.visualViewport
+        ? window.visualViewport.height : window.innerHeight) - 16;
+      if (er.bottom > bottom) scroller.scrollTop += er.bottom - bottom;
+      else if (er.top < top) scroller.scrollTop -= top - er.top;
     }, 300);
   });
 
-  /* 키보드를 내렸을 때 화면이 어긋나 있으면 원래 자리로 돌려놓는다 */
-  document.addEventListener('focusout', () => {
-    setTimeout(() => {
-      const a = document.activeElement;
-      if (a && a.matches && a.matches('input, select, textarea')) return;
-      window.scrollTo(0, 0);
-    }, 120);
-  });
+  /* 이전에는 키보드가 닫히면 window.scrollTo(0, 0)을 호출했다. 그 때문에
+     아래쪽 내역을 수정·취소할 때마다 목록 처음으로 튀었다. 모달 입력칸은
+     위의 focusin 처리로 모달 안에서만 보이게 하고, 본문 위치는 수정을 열 때
+     기억한 viewScrollReturn으로 복원한다. */
 }
 
 /* --- 커플 가계부 연동 설정 --- */
@@ -2154,11 +3443,16 @@ function renderLinkSetting() {
   const L = data.settings.link || {};
   const on = !!L.on;
   $('#linkStateText').textContent = on
-    ? `연동 켜짐 · 커플 앱에서 '${L.myName || '?'}' 로 기록된 것만` : '연동 꺼짐';
-  $('#btnLinkToggle').textContent = on ? '끄기' : '켜기';
+    ? (I18n.lang === 'en'
+      ? `Import on · calculating ${L.myName || '?'}'s share`
+      : `연동 켜짐 · '${L.myName || '?'}'의 내 몫으로 계산`)
+    : I18n.t('연동 꺼짐');
+  $('#btnLinkToggle').textContent = I18n.t(on ? '끄기' : '켜기');
   $('#btnLinkToggle').classList.toggle('danger', on);
   const n = liveEntries().filter((e) => e.fromCouple).length;
-  $('#linkHint').textContent = on && n ? `지금까지 ${n}건 가져왔어요.` : '';
+  $('#linkHint').textContent = on && n
+    ? (I18n.lang === 'en' ? `${n} ${n === 1 ? 'entry' : 'entries'} imported so far.`
+      : `지금까지 ${n}건 가져왔어요.`) : '';
 }
 
 function openLinkSetup() {
@@ -2182,11 +3476,12 @@ function draftLink() {
 }
 
 async function testLink() {
-  $('#linkHint').textContent = '확인하는 중…';
+  $('#linkHint').textContent = I18n.t('확인하는 중…');
   try {
     const r = await Link.test({ ...data.settings, link: draftLink() });
-    $('#linkHint').textContent =
-      `연결됐어요. 커플 앱에 ${r.names.join(', ')} 가 있고, 내 이름으로 된 기록이 ${r.mine}건이에요.`;
+    $('#linkHint').textContent = I18n.lang === 'en'
+      ? `Connected. The couple ledger contains ${r.names.join(', ')}; ${r.mine} ${r.mine === 1 ? 'entry uses' : 'entries use'} your name.`
+      : `연결됐어요. 커플 앱에 ${r.names.join(', ')} 가 있고, 내 이름으로 된 기록이 ${r.mine}건이에요.`;
   } catch (e) {
     $('#linkHint').textContent = '⚠ ' + e.message;
   }
@@ -2203,13 +3498,19 @@ async function saveLink() {
   }
   data.settings.link = L;
   data.settings.linkPullAt = null;      // 처음 켤 때는 지난 기록까지 모두 가져온다
+  data.settings.linkShareVersion = 0;
+  data.settings.linkShareMetaKey = '';
   Store.saveNow(data);
   $('#linkSetup').classList.add('hidden');
   toast('가져오는 중…');
   await runSync();
   renderLinkSetting();
   const n = liveEntries().filter((e) => e.fromCouple).length;
-  toast(n ? `커플 가계부에서 ${n}건 가져왔어요` : '가져올 기록이 없어요');
+  toast(n
+    ? (I18n.lang === 'en'
+      ? `Imported ${n} ${n === 1 ? 'entry' : 'entries'} from the couple ledger`
+      : `커플 가계부에서 ${n}건 가져왔어요`)
+    : '가져올 기록이 없어요');
 }
 
 function toggleLink() {
@@ -2287,9 +3588,29 @@ const Push = (function () {
     return reg.pushManager.getSubscription();
   }
 
+  function language() {
+    return I18n.lang === 'en' ? 'en' : 'ko';
+  }
+
   function pack(sub, member) {
     const j = sub.toJSON();
-    return { endpoint: j.endpoint, keys: j.keys, member: member || '', at: new Date().toISOString() };
+    return {
+      endpoint: j.endpoint, keys: j.keys, member: member || '',
+      lang: language(), at: new Date().toISOString()
+    };
+  }
+
+  /* Upgrade an old subscription in place and keep its device-local language current.
+     The endpoint and keys stay untouched, so this does not prompt or resubscribe. */
+  function refreshMetadata(member) {
+    const sub = data && data.settings && data.settings.pushSub;
+    if (!sub) return false;
+    const lang = language();
+    const name = member || '';
+    if (sub.lang === lang && sub.member === name) return false;
+    sub.lang = lang;
+    sub.member = name;
+    return true;
   }
 
   async function enable() {
@@ -2335,7 +3656,10 @@ const Push = (function () {
     scheduleSync();
   }
 
-  return { supported, isIOS, isStandalone, blockedReason, current, enable, disable, prefs, setPrefs };
+  return {
+    supported, isIOS, isStandalone, blockedReason, current, enable, disable,
+    prefs, setPrefs, refreshMetadata
+  };
 })();
 
 function saveNowIfPossible() {
@@ -2385,8 +3709,8 @@ function bindPush() {
 /* 앱이 처음 넣어준 이름들 — 문장 중간에 섞여 있어도 번역해도 안전하다 */
 function stockNames() {
   return [
-    ...defaultCategories().expense.map((c) => c.name),
-    ...defaultCategories().income.map((c) => c.name),
+    ...defaultCategories().expense.map((c) => c.nameKo),
+    ...defaultCategories().income.map((c) => c.nameKo),
     ...defaultMethods().map((m) => m.name)
   ];
 }
@@ -2397,13 +3721,13 @@ function userWords() {
   /* 앱이 처음 넣어준 이름은 번역해도 된다 (영어 화면에 한글이 남지 않게).
      사용자가 직접 만들거나 바꾼 이름만 그대로 둔다. */
   const stock = new Set([
-    ...defaultCategories().expense.map((c) => c.name),
-    ...defaultCategories().income.map((c) => c.name),
+    ...defaultCategories().expense.flatMap((c) => [c.name, c.nameKo, c.nameEn]),
+    ...defaultCategories().income.flatMap((c) => [c.name, c.nameKo, c.nameEn]),
     ...defaultMethods().map((m) => m.name)
   ]);
   return [
-    ...(cats.expense || []).map((c) => c.name),
-    ...(cats.income || []).map((c) => c.name),
+    ...(cats.expense || []).flatMap((c) => [c.name, c.nameKo, c.nameEn]),
+    ...(cats.income || []).flatMap((c) => [c.name, c.nameKo, c.nameEn]),
     ...(s.methods || []).map((m) => m.name),
     ...(s.goal && s.goal.name ? [s.goal.name] : []),
     ...(s.recurring || []).map((r) => r.memo)
@@ -2411,16 +3735,12 @@ function userWords() {
 }
 
 
-/* 아무것도 없는 상태에서 영어로 시작하면, 분류·결제수단 이름을 영어로 넣어준다.
-   (한글 이름을 화면에서만 영어로 바꾸면 설정에서 고칠 때 헷갈리기 때문) */
+/* 분류 name 은 내역·반복·적립률이 참조하는 안정적인 키라 언어를 바꿔도 손대지 않는다.
+   예전 동작과의 호환을 위해 기본 결제수단 이름만 빈 가계부의 영어 첫 실행에서 바꾼다. */
 function seedNamesForLang() {
   if (I18n.lang !== 'en') return;
   if (data.entries.length) return;                 // 이미 쓰던 가계부면 건드리지 않는다
   const en = (n) => I18n.t(n);
-  const cats = data.settings.categories;
-  ['expense', 'income'].forEach((k) => {
-    (cats[k] || []).forEach((c) => { c.name = en(c.name); });
-  });
   (data.settings.methods || []).forEach((m) => { m.name = en(m.name); });
 }
 
@@ -2429,8 +3749,9 @@ markDesktopChrome();
 trackKeyboard();
 bindPush();
 bindLink();
-init();
 bindUpdateBar();
-setupServiceWorker();
-checkDesktopUpdate();
-setInterval(checkDesktopUpdate, 6 * 60 * 60 * 1000);
+init().then(() => {
+  setupServiceWorker();
+  checkDesktopUpdate();
+  setInterval(checkDesktopUpdate, 6 * 60 * 60 * 1000);
+});

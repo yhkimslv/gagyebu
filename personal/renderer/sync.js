@@ -4,6 +4,7 @@
  * - 삭제는 deleted 플래그(tombstone)로 전파
  */
 window.Sync = (function () {
+  const msg = (ko, en) => (window.I18n && I18n.lang === 'en' ? en : ko);
   let cfg = null;
   let extraOk = true;   // Supabase 에 extra 칸이 있는지 (없으면 빼고 보낸다)
   const status = { state: 'off', lastSyncAt: null, error: null, running: false };
@@ -39,16 +40,24 @@ window.Sync = (function () {
   function friendlyError(status, body) {
     const b = body || '';
     if (status === 404 && b.includes('PGRST125')) {
-      return 'Project URL 을 확인해주세요. 뒤에 /rest/v1 같은 주소가 붙어 있으면 지우고 https://xxxx.supabase.co 형태만 넣으면 됩니다.';
+      return msg(
+        'Project URL 을 확인해주세요. 뒤에 /rest/v1 같은 주소가 붙어 있으면 지우고 https://xxxx.supabase.co 형태만 넣으면 됩니다.',
+        'Check the Project URL. Remove paths such as /rest/v1 and enter only https://xxxx.supabase.co.');
     }
     if (status === 404 && (b.includes('PGRST205') || b.includes('Could not find the table'))) {
-      return 'Supabase 에 표가 아직 없어요. SQL Editor 에서 supabase_setup.sql 을 실행했는지 확인해주세요.';
+      return msg(
+        'Supabase 에 표가 아직 없어요. SQL Editor 에서 supabase_setup.sql 을 실행했는지 확인해주세요.',
+        'The Supabase tables do not exist yet. Run supabase_setup.sql in SQL Editor.');
     }
     if (status === 401 || status === 403) {
-      return 'anon public 키가 맞는지 확인해주세요. (service_role 키가 아니라 anon public 키입니다)';
+      return msg(
+        'anon public 키가 맞는지 확인해주세요. (service_role 키가 아니라 anon public 키입니다)',
+        'Check the anon public key. Use the anon public key, not the service_role key.');
     }
     if (status === 400 && b.includes('column')) {
-      return 'Supabase 표에 칸이 부족해요. supabase_setup.sql 을 다시 한 번 실행해주세요.';
+      return msg(
+        'Supabase 표에 칸이 부족해요. supabase_setup.sql 을 다시 한 번 실행해주세요.',
+        'The Supabase tables are missing columns. Run supabase_setup.sql again.');
     }
     return 'HTTP ' + status + ' ' + b.slice(0, 200);
   }
@@ -68,8 +77,9 @@ window.Sync = (function () {
     } catch (e) {
       // 인터넷이 끊겼거나 Project URL 이 잘못된 주소일 때
       throw new Error(navigator.onLine === false
-        ? '인터넷에 연결되면 자동으로 동기화됩니다.'
-        : '서버에 연결할 수 없어요. Project URL 이 맞는지 확인해주세요.');
+        ? msg('인터넷에 연결되면 자동으로 동기화됩니다.', 'Sync will resume when you are online.')
+        : msg('서버에 연결할 수 없어요. Project URL 이 맞는지 확인해주세요.',
+          'Could not connect to the server. Check the Project URL.'));
     }
     if (!res.ok) {
       const t = await res.text().catch(() => '');
@@ -157,23 +167,44 @@ window.Sync = (function () {
 
       /* 2) 상대 변경분 받아오기 */
       const since = data.settings.lastPullAt || '1970-01-01T00:00:00Z';
-      const rows = await req(
-        'entries?couple_code=eq.' + encodeURIComponent(cfg.code) +
-        '&updated_at=gte.' + encodeURIComponent(since) +
-        '&order=updated_at.asc&limit=3000'
-      );
       let maxSeen = data.settings.lastPullAt || null;
-      for (const r of rows || []) {
-        const remote = fromRow(r);
-        if (!maxSeen || r.updated_at > maxSeen) maxSeen = r.updated_at;
-        const local = data.entries.find((e) => e.id === remote.id);
-        if (!local) {
-          data.entries.push(remote);
-          changed = true;
-        } else if (remote.updatedAt > local.updatedAt && !local.dirty) {
-          Object.assign(local, remote);
-          changed = true;
+      /* Supabase 기본 응답 상한 안쪽인 1,000건씩 고정된 순서로 끝까지 받는다.
+         모든 페이지가 끝나기 전에는 status 를 ok 로 만들지 않으므로, 앱이
+         불완전한 원장으로 잔액 기준 합계를 확정하지 않는다. */
+      const pageSize = 1000;
+      let cursorTs = null;
+      let cursorId = '';
+      while (true) {
+        /* offset 페이지는 페이지 사이에 앞쪽 행이 수정돼 뒤로 이동하면 아직 못 받은
+           다음 행을 건너뛸 수 있다. (updated_at,id) 복합 커서로 이어 받아, 동시
+           수정된 행은 중복될 수만 있고 미수신 행은 빠지지 않게 한다. */
+        const cursorFilter = cursorTs
+          ? '&or=(updated_at.gt.' + encodeURIComponent(cursorTs)
+            + ',and(updated_at.eq.' + encodeURIComponent(cursorTs)
+            + ',id.gt.' + encodeURIComponent(cursorId) + '))'
+          : '&updated_at=gte.' + encodeURIComponent(since);
+        const page = (await req(
+          'entries?couple_code=eq.' + encodeURIComponent(cfg.code) +
+          cursorFilter +
+          '&order=updated_at.asc,id.asc' +
+          '&limit=' + pageSize
+        )) || [];
+        for (const r of page) {
+          const remote = fromRow(r);
+          if (!maxSeen || r.updated_at > maxSeen) maxSeen = r.updated_at;
+          const local = data.entries.find((e) => e.id === remote.id);
+          if (!local) {
+            data.entries.push(remote);
+            changed = true;
+          } else if (remote.updatedAt > local.updatedAt && !local.dirty) {
+            Object.assign(local, remote);
+            changed = true;
+          }
         }
+        if (page.length < pageSize) break;
+        const tail = page[page.length - 1];
+        cursorTs = tail.updated_at;
+        cursorId = tail.id;
       }
       if (maxSeen) data.settings.lastPullAt = maxSeen;
 
@@ -289,7 +320,7 @@ window.Sync = (function () {
         method: 'POST',
         headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
         body: JSON.stringify([extraOk
-          ? { ...row, extra: { metaTs: tsOut, retiredMethods: retiredOut,
+          ? { ...row, extra: { ...remoteExtra, metaTs: tsOut, retiredMethods: retiredOut,
                                pushSubs: subsOut, retiredSubs, pushPrefs: prefsOut } }
           : row])
       });

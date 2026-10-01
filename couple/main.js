@@ -33,12 +33,13 @@ function saveData(data) {
 let win = null;
 
 function createWindow() {
+  const appTitle = /^ko\b/i.test(app.getLocale() || '') ? '우리 가계부' : 'Our Ledger';
   win = new BrowserWindow({
     width: 1180,
     height: 800,
     minWidth: 860,
     minHeight: 600,
-    title: '우리 가계부',
+    title: appTitle,
     autoHideMenuBar: true,
     backgroundColor: '#faf7f6',
     /* 제목 표시줄을 앱 색으로 물들인다.
